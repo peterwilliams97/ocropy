@@ -8,7 +8,8 @@ import numpy as np
 
 def is_slices(u):
     for s in u:
-        if type(s)!=slice: return False
+        if type(s)!=slice:
+            return False
     return True
 def dims(s):
     """List of dimensions of the slice list."""
@@ -83,7 +84,7 @@ def xoverlaps(u,v):
     return u[1].stop>=v[1].start and v[1].stop>=u[1].start
 def yoverlaps(u,v):
     return u[0].stop>=v[0].start and v[0].stop>=u[0].start
-    
+
 def center1(s):
     return np.mean([s[1].stop,s[1].start])
 def center0(s):
@@ -101,6 +102,7 @@ def center_in(u,v):
 
 def width(s):
     return s[1].stop-s[1].start
+
 def height(s):
     return s[0].stop-s[0].start
 

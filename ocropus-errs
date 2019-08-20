@@ -12,6 +12,7 @@ import multiprocessing
 import ocrolib
 from ocrolib import edist
 
+
 parser = argparse.ArgumentParser(description = """
 Compute the edit distances between ground truth and recognizer output.
 Run with the ground truth files as arguments, and it will find the

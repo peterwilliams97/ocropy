@@ -14,8 +14,7 @@ import unicodedata
 import inspect
 import glob
 import cPickle
-from ocrolib.exceptions import (BadClassLabel, BadInput, FileNotFound,
-                                OcropusException)
+from ocrolib.exceptions import (BadClassLabel, BadInput, FileNotFound, OcropusException)
 
 import numpy
 from numpy import (amax, amin, array, bitwise_and, clip, dtype, mean, minimum,
@@ -45,16 +44,16 @@ pickle_mode = 2
 
 def normalize_text(s):
     """Apply standard Unicode normalizations for OCR.
-    This eliminates common ambiguities and weird unicode
-    characters."""
+        This eliminates common ambiguities and weird unicode characters.
+    """
     s = unicode(s)
-    s = unicodedata.normalize('NFC',s)
+    s = unicodedata.normalize('NFC', s)
     s = re.sub(ur'\s+(?u)',' ',s)
     s = re.sub(ur'\n(?u)','',s)
     s = re.sub(ur'^\s+(?u)','',s)
     s = re.sub(ur'\s+$(?u)','',s)
-    for m,r in chars.replacements:
-        s = re.sub(unicode(m),unicode(r),s)
+    for m, r in chars.replacements:
+        s = re.sub(unicode(m), unicode(r), s)
     return s
 
 def project_text(s,kind="exact"):
@@ -605,7 +604,7 @@ def ocropus_find_file(fname, gz=True):
         * current working directory
         * ../../../../share/ocropus from this file's install location
         * `/usr/local/share/ocropus`
-        * `$PREFIX/share/ocropus` ($PREFIX being the Python installation 
+        * `$PREFIX/share/ocropus` ($PREFIX being the Python installation
            prefix, usually `/usr`)
     """
     possible_prefixes = []

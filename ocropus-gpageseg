@@ -11,8 +11,6 @@
 # - pick up stragglers
 # ? laplacian as well
 
-from __future__ import print_function
-
 import argparse
 import glob
 import os
@@ -24,10 +22,10 @@ from multiprocessing import Pool
 import numpy as np
 from scipy.ndimage import measurements
 from scipy.misc import imsave
-from scipy.ndimage.filters import gaussian_filter,uniform_filter,maximum_filter
+from scipy.ndimage.filters import gaussian_filter, uniform_filter, maximum_filter
 
 import ocrolib
-from ocrolib import psegutils,morph,sl
+from ocrolib import psegutils, morph, sl
 from ocrolib.exceptions import OcropusException
 from ocrolib.toplevel import *
 
@@ -110,7 +108,7 @@ def find(condition):
     "Return the indices where ravel(condition) is true"
     res, = np.nonzero(np.ravel(condition))
     return res
-    
+
 def norm_max(v):
     return v/np.amax(v)
 
@@ -180,9 +178,9 @@ def compute_separators_morph(binary,scale):
     d1 = int(max(5,scale))+args.sepwiden
     thick = morph.r_dilation(binary,(d0,d1))
     vert = morph.rb_opening(thick,(10*scale,1))
-    vert = morph.r_erosion(vert,(d0//2,args.sepwiden))
-    vert = morph.select_regions(vert,sl.dim1,min=3,nbest=2*args.maxseps)
-    vert = morph.select_regions(vert,sl.dim0,min=20*scale,nbest=args.maxseps)
+    vert = morph.r_erosion(vert, (d0//2,args.sepwiden))
+    vert = morph.select_regions(vert, sl.dim1, min=3,nbest=2*args.maxseps)
+    vert = morph.select_regions(vert, sl.dim0, min=20*scale,nbest=args.maxseps)
     return vert
 
 
@@ -284,9 +282,9 @@ def apply_mask(binary,colseps):
 ### Those components are then used as seeds for the text lines.
 ################################################################
 
-def compute_gradmaps(binary,scale):
+def compute_gradmaps(binary ,scale):
     # use gradient filtering to find baselines
-    boxmap = psegutils.compute_boxmap(binary,scale)
+    boxmap = psegutils.compute_boxmap(binary, scale)
     cleaned = boxmap*binary
     DSAVE("cleaned",cleaned)
     if args.usegauss:
@@ -303,13 +301,13 @@ def compute_gradmaps(binary,scale):
     return bottom,top,boxmap
 
 
-def compute_line_seeds(binary,bottom,top,colseps,scale):
-    """Base on gradient maps, computes candidates for baselines
-    and xheights.  Then, it marks the regions between the two
-    as a line seed."""
+def compute_line_seeds(binary, bottom, top, colseps, scale):
+    """Base on gradient maps, computes candidates for baselines and xheights.  Then, it marks the
+       regions between the two as a line seed.
+    """
     t = args.threshold
     vrange = int(args.vscale*scale)
-    bmarked = maximum_filter(bottom==maximum_filter(bottom,(vrange,0)),(2,2))
+    bmarked = maximum_filter(bottom==maximum_filter(bottom, (vrange,0)), (2,2))
     bmarked = bmarked*(bottom>t*np.amax(bottom)*t)*(1-colseps)
     tmarked = maximum_filter(top==maximum_filter(top,(vrange,0)),(2,2))
     tmarked = tmarked*(top>t*np.amax(top)*t/2)*(1-colseps)
@@ -317,7 +315,8 @@ def compute_line_seeds(binary,bottom,top,colseps,scale):
     seeds = np.zeros(binary.shape,'i')
     delta = max(3,int(scale/2))
     for x in range(bmarked.shape[1]):
-        transitions = sorted([(y,1) for y in find(bmarked[:,x])]+[(y,0) for y in find(tmarked[:,x])])[::-1]
+        transitions = sorted([(y,1) for y in find(bmarked[:,x])] +
+                             [(y,0) for y in find(tmarked[:,x])])[::-1]
         transitions += [(0,0)]
         for l in range(len(transitions)-1):
             y0,s0 = transitions[l]
@@ -328,7 +327,7 @@ def compute_line_seeds(binary,bottom,top,colseps,scale):
     seeds = maximum_filter(seeds,(1,int(1+scale)))
     seeds = seeds*(1-colseps)
     DSAVE("lineseeds",[seeds,0.3*tmarked+0.7*bmarked,binary])
-    seeds,_ = morph.label(seeds)
+    seeds, _ = morph.label(seeds)
     return seeds
 
 
@@ -336,42 +335,45 @@ def compute_line_seeds(binary,bottom,top,colseps,scale):
 ### The complete line segmentation process.
 ################################################################
 
-def remove_hlines(binary,scale,maxsize=10):
-    labels,_ = morph.label(binary)
+def remove_hlines(binary, scale, maxsize=10):
+    labels, _ = morph.label(binary)
     objects = morph.find_objects(labels)
-    for i,b in enumerate(objects):
-        if sl.width(b)>maxsize*scale:
+    for i, b in enumerate(objects):
+        if sl.width(b) > maxsize * scale:
             labels[b][labels[b]==i+1] = 0
-    return np.array(labels!=0,'B')
+    return np.array(labels!=0, 'B')
 
 
 def compute_segmentation(binary,scale):
-    """Given a binary image, compute a complete segmentation into
-    lines, computing both columns and text lines."""
-    binary = np.array(binary,'B')
+    """Given a binary image, compute a complete segmentation into lines, computing both columns and
+        text lines.
+    """
+    binary = np.array(binary, 'B')
 
-    # start by removing horizontal black lines, which only
-    # interfere with the rest of the page segmentation
-    binary = remove_hlines(binary,scale)
+    # start by removing horizontal black lines, which only interfere with the rest of the page
+    # segmentation
+    binary = remove_hlines(binary, scale)
 
     # do the column finding
-    if not args.quiet: print_info("computing column separators")
-    colseps,binary = compute_colseps(binary,scale)
+    if not args.quiet:
+        print_info("computing column separators")
+    colseps, binary = compute_colseps(binary,scale)
 
     # now compute the text line seeds
     if not args.quiet: print_info("computing lines")
-    bottom,top,boxmap = compute_gradmaps(binary,scale)
-    seeds = compute_line_seeds(binary,bottom,top,colseps,scale)
+    bottom, top, boxmap = compute_gradmaps(binary, scale)
+    seeds = compute_line_seeds(binary, bottom, top, colseps, scale)
     DSAVE("seeds",[bottom,top,boxmap])
 
-    # spread the text line seeds to all the remaining
-    # components
-    if not args.quiet: print_info("propagating labels")
+    # spread the text line seeds to all the remaining components
+    if not args.quiet:
+        print_info("propagating labels")
     llabels = morph.propagate_labels(boxmap,seeds,conflict=0)
-    if not args.quiet: print_info("spreading labels")
+    if not args.quiet:
+        print_info("spreading labels")
     spread = morph.spread_labels(seeds,maxdist=scale)
-    llabels = np.where(llabels>0,llabels,spread*binary)
-    segmentation = llabels*binary
+    llabels = np.where(llabels>0, llabels, spread*binary)
+    segmentation = llabels * binary
     return segmentation
 
 
@@ -380,7 +382,7 @@ def compute_segmentation(binary,scale):
 ################################################################
 
 def process1(job):
-    fname,i = job
+    fname, i = job
     global base
     base,_ = ocrolib.allsplitext(fname)
     outputdir = base
@@ -408,7 +410,8 @@ def process1(job):
             gray = ocrolib.read_image_gray(base+".nrm.png")
             checktype(gray,GRAYSCALE)
         else:
-            print_error("Grayscale version %s.nrm.png not found. Use ocropus-nlbin for creating normalized grayscale version of the pages as well." % base)
+            print_error("Grayscale version %s.nrm.png not found. Use ocropus-nlbin for creating " +
+                        "normalized grayscale version of the pages as well." % base)
             return
 
     binary = 1-binary # invert
@@ -421,14 +424,15 @@ def process1(job):
     if np.isnan(scale) or scale>1000.0:
         print_error("%s: bad scale (%g); skipping\n" % (fname, scale))
         return
-    if scale<args.minscale:
+    if scale < args.minscale:
         print_error("%s: scale (%g) less than --minscale; skipping\n" % (fname, scale))
         return
 
     # find columns and text lines
 
-    if not args.quiet: print_info("computing segmentation")
-    segmentation = compute_segmentation(binary,scale)
+    if not args.quiet:
+        print_info("computing segmentation")
+    segmentation = compute_segmentation(binary, scale)
     if np.amax(segmentation)>args.maxlines:
         print_error("%s: too many lines %g" % (fname, np.amax(segmentation)))
         return
@@ -482,10 +486,11 @@ def safe_process1(job):
     except Exception as e:
         traceback.print_exc()
 
-if args.parallel<2:
+if args.parallel < 2:
     count = 0
     for i,f in enumerate(files):
-        if args.parallel==0: print_info(f)
+        if args.parallel==0:
+            print_info(f)
         count += 1
         safe_process1((f,i+1))
 else:

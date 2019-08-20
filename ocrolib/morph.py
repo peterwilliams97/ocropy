@@ -7,7 +7,7 @@ from __future__ import print_function
 from numpy import *
 import pylab
 from pylab import *
-from scipy.ndimage import morphology,measurements,filters
+from scipy.ndimage import morphology, measurements, filters
 from scipy.ndimage.morphology import *
 from toplevel import *
 
@@ -17,12 +17,16 @@ def label(image,**kw):
     work with a wider range of data types.  The default function
     is inconsistent about the data types it accepts on different
     platforms."""
-    try: return measurements.label(image,**kw)
-    except: pass
+    try:
+        return measurements.label(image,**kw)
+    except:
+        pass
     types = ["int32","uint32","int64","uint64","int16","uint16"]
     for t in types:
-        try: return measurements.label(array(image,dtype=t),**kw)
-        except: pass
+        try:
+            return measurements.label(array(image,dtype=t),**kw)
+        except:
+            pass
     # let it raise the same exception as before
     return measurements.label(image,**kw)
 
@@ -32,15 +36,19 @@ def find_objects(image,**kw):
     work with a wider range of data types.  The default function
     is inconsistent about the data types it accepts on different
     platforms."""
-    try: return measurements.find_objects(image,**kw)
-    except: pass
+    try:
+        return measurements.find_objects(image,**kw)
+    except:
+        pass
     types = ["int32","uint32","int64","uint64","int16","uint16"]
     for t in types:
-        try: return measurements.find_objects(array(image,dtype=t),**kw)
-        except: pass
+        try:
+            return measurements.find_objects(array(image,dtype=t),**kw)
+        except:
+            pass
     # let it raise the same exception as before
     return measurements.find_objects(image,**kw)
-    
+
 def check_binary(image):
     assert image.dtype=='B' or image.dtype=='i' or image.dtype==dtype('bool'),\
         "array should be binary, is %s %s"%(image.dtype,image.shape)
@@ -50,7 +58,7 @@ def check_binary(image):
 @checks(ABINARY2,uintpair)
 def r_dilation(image,size,origin=0):
     """Dilation with rectangular structuring element using maximum_filter"""
-    return filters.maximum_filter(image,size,origin=origin)
+    return filters.maximum_filter(image,  size ,origin=origin)
 
 @checks(ABINARY2,uintpair)
 def r_erosion(image,size,origin=0):
@@ -258,7 +266,7 @@ def renumber_by_xcenter(seg):
     are non-decreasing.  This is used for sorting the components
     of a segmented text line into left-to-right reading order."""
     objects = [(slice(0,0),slice(0,0))]+find_objects(seg)
-    def xc(o): 
+    def xc(o):
         # if some labels of the segmentation are missing, we
         # return a very large xcenter, which will move them all
         # the way to the right (they don't show up in the final
