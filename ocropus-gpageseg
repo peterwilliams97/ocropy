@@ -397,10 +397,10 @@ def process1(job):
             print_error("cannot open either %s.bin.png or %s" % (base, fname))
             return
 
-    checktype(binary,ABINARY2)
+    checktype(binary, ABINARY2)
 
     if not args.nocheck:
-        check = check_page(np.amax(binary)-binary)
+        check = check_page(np.amax(binary) - binary)
         if check is not None:
             print_error("%s SKIPPED %s (use -n to disable this check)" % (fname, check))
             return
@@ -414,9 +414,9 @@ def process1(job):
                         "normalized grayscale version of the pages as well." % base)
             return
 
-    binary = 1-binary # invert
+    binary = 1 - binary # invert
 
-    if args.scale==0:
+    if args.scale == 0:
         scale = psegutils.estimate_scale(binary)
     else:
         scale = args.scale
@@ -440,29 +440,31 @@ def process1(job):
 
     # compute the reading order
 
-    if not args.quiet: print_info("finding reading order")
+    if not args.quiet:
+        print_info("finding reading order")
     lines = psegutils.compute_lines(segmentation,scale)
     order = psegutils.reading_order([l.bounds for l in lines])
     lsort = psegutils.topsort(order)
 
     # renumber the labels so that they conform to the specs
 
-    nlabels = np.amax(segmentation)+1
+    nlabels = np.amax(segmentation) + 1
     renumber = np.zeros(nlabels,'i')
     for i,v in enumerate(lsort): renumber[lines[v].label] = 0x010000+(i+1)
     segmentation = renumber[segmentation]
 
     # finally, output everything
 
-    if not args.quiet: print_info("writing lines")
+    if not args.quiet:
+        print_info("writing lines")
     if not os.path.exists(outputdir):
         os.mkdir(outputdir)
     lines = [lines[i] for i in lsort]
-    ocrolib.write_page_segmentation("%s.pseg.png"%outputdir,segmentation)
-    cleaned = ocrolib.remove_noise(binary,args.noise)
+    ocrolib.write_page_segmentation("%s.pseg.png" % outputdir, segmentation)
+    cleaned = ocrolib.remove_noise(binary, args.noise)
     for i,l in enumerate(lines):
-        binline = psegutils.extract_masked(1-cleaned,l,pad=args.pad,expand=args.expand)
-        ocrolib.write_image_binary("%s/01%04x.bin.png"%(outputdir,i+1),binline)
+        binline = psegutils.extract_masked(1-cleaned, l, pad=args.pad, expand=args.expand)
+        ocrolib.write_image_binary("%s/01%04x.bin.png"%(outputdir,i+1), binline)
         if args.gray:
             grayline = psegutils.extract_masked(gray,l,pad=args.pad,expand=args.expand)
             ocrolib.write_image_gray("%s/01%04x.nrm.png"%(outputdir,i+1),grayline)
@@ -496,5 +498,6 @@ if args.parallel < 2:
 else:
     pool = Pool(processes=args.parallel)
     jobs = []
-    for i,f in enumerate(files): jobs += [(f,i+1)]
-    result = pool.map(process1,jobs)
+    for i, f in enumerate(files):
+        jobs += [(f, i+1)]
+    result = pool.map(process1, jobs)

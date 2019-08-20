@@ -253,7 +253,11 @@ def renumber_labels(a):
     """Alias for renumber_labels_ordered"""
     return renumber_labels_ordered(a)
 
-def pyargsort(seq,cmp=cmp,key=lambda x:x):
+
+def cmp(a, b):
+    return (a > b) - (a < b)
+
+def pyargsort(seq, cmp=cmp, key=lambda x:x):
     """Like numpy's argsort, but using the builtin Python sorting
     function.  Takes an optional cmp."""
     return sorted(range(len(seq)),key=lambda x:key(seq.__getitem__(x)),cmp=cmp)

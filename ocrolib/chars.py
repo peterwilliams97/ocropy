@@ -4,18 +4,18 @@ import re
 
 # common character sets
 
-digits = u"0123456789"
-letters = u"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-symbols = ur"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""
+digits = "0123456789"
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+symbols = r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""
 ascii = digits+letters+symbols
 
-xsymbols = u"""€¢£»«›‹÷©®†‡°∙•◦‣¶§÷¡¿▪▫"""
-german = u"ÄäÖöÜüß"
-french = u"ÀàÂâÆæÇçÉéÈèÊêËëÎîÏïÔôŒœÙùÛûÜüŸÿ"
-turkish = u"ĞğŞşıſ"
-greek = u"ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσςΤτΥυΦφΧχΨψΩω"
-portuguese = u"ÁÃÌÍÒÓÕÚáãìíòóõú"
-telugu = u" ఁంఃఅఆఇఈఉఊఋఌఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరఱలళవశషసహఽాిీుూృౄెేైొోౌ్ౘౙౠౡౢౣ౦౧౨౩౪౫౬౭౮౯"
+xsymbols = """€¢£»«›‹÷©®†‡°∙•◦‣¶§÷¡¿▪▫"""
+german = "ÄäÖöÜüß"
+french = "ÀàÂâÆæÇçÉéÈèÊêËëÎîÏïÔôŒœÙùÛûÜüŸÿ"
+turkish = "ĞğŞşıſ"
+greek = "ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσςΤτΥυΦφΧχΨψΩω"
+portuguese = "ÁÃÌÍÒÓÕÚáãìíòóõú"
+telugu = " ఁంఃఅఆఇఈఉఊఋఌఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరఱలళవశషసహఽాిీుూృౄెేైొోౌ్ౘౙౠౡౢౣ౦౧౨౩౪౫౬౭౮౯"
 
 default = ascii+xsymbols+german+french+portuguese
 
@@ -35,10 +35,10 @@ european = default+turkish+greek
 # there seems to be left vs right leaning, and top-heavy vs bottom-heavy
 
 replacements = [
-    (u'[_~#]',u"~"), # OCR control characters
-    (u'"',u"''"), # typewriter double quote
-    (u"`",u"'"), # grave accent
-    (u'[“”]',u"''"), # fancy quotes
+    (u'[_~#]', u"~"), # OCR control characters
+    (u'"', u"''"), # typewriter double quote
+    (u"`", u"'"), # grave accent
+    (u'[“”]', u"''"), # fancy quotes
     (u"´",u"'"), # acute accent
     (u"[‘’]",u"'"), # left single quotation mark
     (u"[“”]",u"''"), # right double quotation mark
@@ -59,29 +59,26 @@ replacements = [
 ]
 
 def requote(s):
-    s = unicode(s)
-    s = re.sub(ur"''",u'"',s)
-    return s
+    return re.sub(r"''", '"', s)
 
-def requote_fancy(s,germanic=0):
-    s = unicode(s)
+def requote_fancy(s, germanic=0):
     if germanic:
         # germanic quoting style reverses the shapes
         # straight double quotes
-        s = re.sub(ur"\s+''",u"”",s)
-        s = re.sub(u"''\s+",u"“",s)
-        s = re.sub(ur"\s+,,",u"„",s)
+        s = re.sub(r"\s+''", u"”",s)
+        s = re.sub(u"''\s+", u"“",s)
+        s = re.sub(r"\s+,,", u"„",s)
         # straight single quotes
-        s = re.sub(ur"\s+'",u"’",s)
-        s = re.sub(ur"'\s+",u"‘",s)
-        s = re.sub(ur"\s+,",u"‚",s)
+        s = re.sub(r"\s+'",u"’",s)
+        s = re.sub(r"'\s+",u"‘",s)
+        s = re.sub(r"\s+,",u"‚",s)
     else:
         # straight double quotes
-        s = re.sub(ur"\s+''",u"“",s)
-        s = re.sub(ur"''\s+",u"”",s)
-        s = re.sub(ur"\s+,,",u"„",s)
+        s = re.sub(r"\s+''",u"“",s)
+        s = re.sub(r"''\s+",u"”",s)
+        s = re.sub(r"\s+,,",u"„",s)
         # straight single quotes
-        s = re.sub(ur"\s+'",u"‘",s)
-        s = re.sub(ur"'\s+",u"’",s)
-        s = re.sub(ur"\s+,",u"‚",s)
+        s = re.sub(r"\s+'",u"‘",s)
+        s = re.sub(r"'\s+",u"’",s)
+        s = re.sub(r"\s+,",u"‚",s)
     return s

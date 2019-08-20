@@ -1,11 +1,8 @@
-from __future__ import print_function
-
 import functools
 import linecache
 import os
 import sys
 import warnings
-from types import NoneType
 # FIXME from ... import wrap
 
 import numpy as np
@@ -28,7 +25,7 @@ def deprecated(f):
     """Prints a deprecation warning when called."""
     @functools.wraps(f)
     def wrapper(*args,**kw):
-        warnings.warn_explicit("calling deprecated function %s"%f.__name__,
+        warnings.warn_explicit("calling deprecated function %s" % f.__name__,
                                category=DeprecationWarning,
                                filename=f.func_code.co_filename,
                                lineno=f.func_code.co_firstlineno+1)
@@ -162,7 +159,7 @@ def checktype(value,type_):
         return value
     # types are checked using isinstance
     if type(type_)==type:
-        if not isinstance(value,type_):
+        if not isinstance(value, type_):
             raise CheckError("isinstance failed",value,"of type",type(value),"is not of type",type_)
         return value
     # for a list, check that all elements of a collection have a type
@@ -172,7 +169,7 @@ def checktype(value,type_):
         if not np.iterable(value):
             raise CheckError("expected iterable",value)
         for x in value:
-            if not reduce(max,[isinstance(x,t) for t in type_]):
+            if not functools.reduce(max, [isinstance(x, t) for t in type_]):
                 raise CheckError("element",x,"of type",type(x),"fails to be of type",type_)
         return value
     # for sets, check membership of the type in the set
@@ -200,10 +197,10 @@ def checks(*types,**ktypes):
         def argument_checks(*args,**kw):
             # print("@@@", f, "decl", types, ktypes, "call",
             #       [strc(x) for x in args], kw)
-            name = f.func_name
-            argnames = f.func_code.co_varnames[:f.func_code.co_argcount]
-            kw3 = [(var,value,ktypes.get(var,True)) for var,value in kw.items()]
-            for var,value,type_ in zip(argnames,args,types)+kw3:
+            name = f.__name__
+            argnames = f.__code__.co_varnames[:f.__code__.co_argcount]
+            kw3 = [(var, value, ktypes.get(var, True)) for var, value in kw.items()]
+            for var, value, type_ in list(zip(argnames, args, types)) + kw3:
                 try:
                     checktype(value,type_)
                 except AssertionError as e:

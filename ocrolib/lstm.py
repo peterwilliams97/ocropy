@@ -23,9 +23,6 @@
 #
 # Author: Thomas M. Breuel
 # License: Apache 2.0
-
-from __future__ import print_function
-
 from collections import defaultdict
 import unicodedata
 
@@ -957,7 +954,7 @@ class Codec:
         s = [self.code2char.get(c,"~") for c in l]
         return s
 
-ascii_labels = [""," ","~"] + [unichr(x) for x in range(33,126)]
+ascii_labels = [""," ","~"] + [chr(x) for x in range(33,126)]
 
 def ascii_codec():
     "Create a codec containing just ASCII characters."
@@ -980,4 +977,3 @@ def getstates_for_display(net):
     if isinstance(net,Stacked) and isinstance(net.nets[0],LSTM):
         return net.nets[0].state[:net.nets[0].last_n]
     return None
-

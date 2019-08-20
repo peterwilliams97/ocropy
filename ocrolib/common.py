@@ -13,14 +13,14 @@ import sysconfig
 import unicodedata
 import inspect
 import glob
-import cPickle
+import pickle
 from ocrolib.exceptions import (BadClassLabel, BadInput, FileNotFound, OcropusException)
 
 import numpy
 from numpy import (amax, amin, array, bitwise_and, clip, dtype, mean, minimum,
                    nan, sin, sqrt, zeros)
 import pylab
-from pylab import (clf, cm, ginput, gray, imshow, ion, subplot, where)
+from pylab import clf, cm, ginput, gray, imshow, ion, subplot, where
 from scipy.ndimage import morphology, measurements
 import PIL
 
@@ -46,37 +46,37 @@ def normalize_text(s):
     """Apply standard Unicode normalizations for OCR.
         This eliminates common ambiguities and weird unicode characters.
     """
-    s = unicode(s)
+    # s = unicode(s)
     s = unicodedata.normalize('NFC', s)
-    s = re.sub(ur'\s+(?u)',' ',s)
-    s = re.sub(ur'\n(?u)','',s)
-    s = re.sub(ur'^\s+(?u)','',s)
-    s = re.sub(ur'\s+$(?u)','',s)
+    s = re.sub(r'\s+(?u)', ' ', s)
+    s = re.sub(r'\n(?u)', '', s)
+    s = re.sub(r'^\s+(?u)', '', s)
+    s = re.sub(r'\s+$(?u)', '', s)
     for m, r in chars.replacements:
-        s = re.sub(unicode(m), unicode(r), s)
+        s = re.sub(m, r, s)
     return s
 
 def project_text(s,kind="exact"):
-    """Project text onto a smaller subset of characters
-    for comparison."""
+    """Project text onto a smaller subset of characters for comparison.
+    """
     s = normalize_text(s)
-    s = re.sub(ur'( *[.] *){4,}',u'....',s) # dot rows
-    s = re.sub(ur'[~_]',u'',s) # dot rows
+    s = re.sub(r'( *[.] *){4,}',u'....',s) # dot rows
+    s = re.sub(r'[~_]',u'',s) # dot rows
     if kind=="exact":
         return s
     if kind=="nospace":
-        return re.sub(ur'\s','',s)
+        return re.sub(r'\s','',s)
     if kind=="spletdig":
-        return re.sub(ur'[^A-Za-z0-9 ]','',s)
+        return re.sub(r'[^A-Za-z0-9 ]','',s)
     if kind=="letdig":
-        return re.sub(ur'[^A-Za-z0-9]','',s)
+        return re.sub(r'[^A-Za-z0-9]','',s)
     if kind=="letters":
-        return re.sub(ur'[^A-Za-z]','',s)
+        return re.sub(r'[^A-Za-z]','',s)
     if kind=="digits":
-        return re.sub(ur'[^0-9]','',s)
+        return re.sub(r'[^0-9]','',s)
     if kind=="lnc":
         s = s.upper()
-        return re.sub(ur'[^A-Z]','',s)
+        return re.sub(r'[^A-Z]','',s)
     raise BadInput("unknown normalization: "+kind)
 
 ################################################################
@@ -414,16 +414,16 @@ def save_object(fname,obj,zip=0):
     if zip>0:
         # with gzip.GzipFile(fname,"wb") as stream:
         with os.popen("gzip -9 > '%s'"%fname,"wb") as stream:
-            cPickle.dump(obj,stream,2)
+            pickle.dump(obj, stream, 2)
     else:
         with open(fname,"wb") as stream:
-            cPickle.dump(obj,stream,2)
+            pickle.dump(obj, stream, 2)
 
-def unpickle_find_global(mname,cname):
+def unpickle_find_global(mname, cname):
     if mname=="lstm.lstm":
         return getattr(lstm,cname)
     if not mname in sys.modules.keys():
-        exec "import "+mname
+        exec("import " + åmname)
     return getattr(sys.modules[mname],cname)
 
 def load_object(fname,zip=0,nofind=0,verbose=0):
@@ -439,12 +439,12 @@ def load_object(fname,zip=0,nofind=0,verbose=0):
     if zip>0:
         # with gzip.GzipFile(fname,"rb") as stream:
         with os.popen("gunzip < '%s'"%fname,"rb") as stream:
-            unpickler = cPickle.Unpickler(stream)
+            unpickler = pickle.Unpickler(stream)
             unpickler.find_global = unpickle_find_global
             return unpickler.load()
     else:
         with open(fname,"rb") as stream:
-            unpickler = cPickle.Unpickler(stream)
+            unpickler = pickle.Unpickler(stream)
             unpickler.find_global = unpickle_find_global
             return unpickler.load()
 
@@ -550,11 +550,10 @@ def allsplitext(path):
 def base(path):
     return allsplitext(path)[0]
 
-@checks(str,{str,unicode})
 def write_text_simple(file,s):
     """Write the given string s to the output file."""
-    with open(file,"w") as stream:
-        if type(s)==unicode: s = s.encode("utf-8")
+    with open(file, "w") as stream:
+        s = s.encode("utf-8")
         stream.write(s)
 
 @checks([str])
