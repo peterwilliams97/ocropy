@@ -208,7 +208,7 @@ def compute_colseps_mconv(binary,scale=1.0):
     DSAVE("1thresh",thresh)
     blocks = morph.rb_closing(binary,(int(4*scale),int(4*scale)))
     DSAVE("2blocks",blocks)
-    seps = np.minimum(blocks,thresh)
+    seps = np.minimum(blocks, thresh)
     seps = morph.select_regions(seps,sl.dim0,min=args.csminheight*scale,nbest=args.maxcolseps)
     DSAVE("3seps",seps)
     blocks = morph.r_dilation(blocks,(5,5))
@@ -219,23 +219,22 @@ def compute_colseps_mconv(binary,scale=1.0):
 
 
 def compute_colseps_conv(binary,scale=1.0):
-    """Find column separators by convolution and
-    thresholding."""
-    h,w = binary.shape
+    """Find column separators by convolution and thresholding."""
+    h, w = binary.shape
     # find vertical whitespace by thresholding
-    smoothed = gaussian_filter(1.0*binary,(scale,scale*0.5))
-    smoothed = uniform_filter(smoothed,(5.0*scale,1))
-    thresh = (smoothed<np.amax(smoothed)*0.1)
+    smoothed = gaussian_filter(1.0*binary, (scale,scale*0.5))
+    smoothed = uniform_filter(smoothed, (5.0*scale,1))
+    thresh = (smoothed < np.amax(smoothed)*0.1)
     DSAVE("1thresh",thresh)
     # find column edges by filtering
-    grad = gaussian_filter(1.0*binary,(scale,scale*0.5),order=(0,1))
-    grad = uniform_filter(grad,(10.0*scale,1))
+    grad = gaussian_filter(1.0*binary, (scale,scale*0.5), order=(0,1))
+    grad = uniform_filter(grad, (10.0*scale,1))
     # grad = abs(grad) # use this for finding both edges
     grad = (grad>0.5*np.amax(grad))
     DSAVE("2grad",grad)
     # combine edges and whitespace
-    seps = np.minimum(thresh,maximum_filter(grad,(int(scale),int(5*scale))))
-    seps = maximum_filter(seps,(int(2*scale),1))
+    seps = np.minimum(thresh, maximum_filter(grad,(int(scale),int(5*scale))))
+    seps = maximum_filter(seps, (int(2*scale),1))
     DSAVE("3seps",seps)
     # select only the biggest column separators
     seps = morph.select_regions(seps,sl.dim0,min=args.csminheight*scale,nbest=args.maxcolseps)
@@ -255,13 +254,13 @@ def compute_colseps(binary,scale):
         args.maxseps = 2
     if args.maxseps > 0:
         print_info("considering at most %g black column separators" % args.maxseps)
-        seps = compute_separators_morph(binary,scale)
-        DSAVE("colseps",0.7*seps+0.3*binary)
+        seps = compute_separators_morph(binary, scale)
+        DSAVE("colseps", 0.7*seps+0.3*binary)
         #colseps = compute_colseps_morph(binary,scale)
-        colseps = np.maximum(colseps,seps)
-        binary = np.minimum(binary,1-seps)
-    binary,colseps = apply_mask(binary,colseps)
-    return colseps,binary
+        colseps = np.maximum(colseps, seps)
+        binary = np.minimum(binary, 1 - seps)
+    binary, colseps = apply_mask(binary, colseps)
+    return colseps, binary
 
 def apply_mask(binary,colseps):
     try:
@@ -344,10 +343,15 @@ def remove_hlines(binary, scale, maxsize=10):
     return np.array(labels!=0, 'B')
 
 
-def compute_segmentation(binary,scale):
+def desc(a):
+    return "%s:%s" % (list(a.shape), a.dtype)
+
+
+def compute_segmentation(binary, scale):
     """Given a binary image, compute a complete segmentation into lines, computing both columns and
         text lines.
     """
+    print("$$ compute_segmentation: %s %g" % (desc(binary), scale))
     binary = np.array(binary, 'B')
 
     # start by removing horizontal black lines, which only interfere with the rest of the page
@@ -374,6 +378,8 @@ def compute_segmentation(binary,scale):
     spread = morph.spread_labels(seeds,maxdist=scale)
     llabels = np.where(llabels>0, llabels, spread*binary)
     segmentation = llabels * binary
+    print("$$ llabels: %s" % desc(llabels))
+    print("$$ segmentation: %s" % desc(segmentation))
     return segmentation
 
 
@@ -384,11 +390,11 @@ def compute_segmentation(binary,scale):
 def process1(job):
     fname, i = job
     global base
-    base,_ = ocrolib.allsplitext(fname)
+    base, _ = ocrolib.allsplitext(fname)
     outputdir = base
 
     try:
-        binary = ocrolib.read_image_binary(base+".bin.png")
+        binary = ocrolib.read_image_binary(base + ".bin.png")
     except IOError:
         try:
             binary = ocrolib.read_image_binary(fname)
@@ -421,7 +427,7 @@ def process1(job):
     else:
         scale = args.scale
     print_info("scale %f" % (scale))
-    if np.isnan(scale) or scale>1000.0:
+    if np.isnan(scale) or scale > 1000.0:
         print_error("%s: bad scale (%g); skipping\n" % (fname, scale))
         return
     if scale < args.minscale:
@@ -433,7 +439,7 @@ def process1(job):
     if not args.quiet:
         print_info("computing segmentation")
     segmentation = compute_segmentation(binary, scale)
-    if np.amax(segmentation)>args.maxlines:
+    if np.amax(segmentation) > args.maxlines:
         print_error("%s: too many lines %g" % (fname, np.amax(segmentation)))
         return
     if not args.quiet: print_info("number of lines %g" % np.amax(segmentation))
@@ -450,7 +456,8 @@ def process1(job):
 
     nlabels = np.amax(segmentation) + 1
     renumber = np.zeros(nlabels,'i')
-    for i,v in enumerate(lsort): renumber[lines[v].label] = 0x010000+(i+1)
+    for i, v in enumerate(lsort):
+        renumber[lines[v].label] = 0x010000+(i+1)
     segmentation = renumber[segmentation]
 
     # finally, output everything
@@ -469,6 +476,7 @@ def process1(job):
             grayline = psegutils.extract_masked(gray,l,pad=args.pad,expand=args.expand)
             ocrolib.write_image_gray("%s/01%04x.nrm.png"%(outputdir,i+1),grayline)
     print_info("%6d  %s %4.1f %d" % (i, fname,  scale,  len(lines)))
+
 
 if len(args.files)==1 and os.path.isdir(args.files[0]):
     files = glob.glob(args.files[0]+"/????.png")

@@ -117,7 +117,7 @@ if args.show>=0 or args.save is not None:
 # load the network used for classification
 
 try:
-    network = ocrolib.load_object(args.model,verbose=1)
+    network = ocrolib.load_object(args.model, verbose=1)
     for x in network.walk(): x.postLoad()
     for x in network.walk():
         if isinstance(x,lstm.LSTM):
@@ -139,15 +139,20 @@ if args.height>0:
     lnorm.setHeight(args.height)
 
 
+def desc(a):
+    return "%s:%s" % (list(a.shape), a.dtype)
+
 # process one file
 
 def process1(arg):
-    (trial,fname) = arg
-    base,_ = ocrolib.allsplitext(fname)
+    trial, fname = arg
+    base, _ = ocrolib.allsplitext(fname)
     line = ocrolib.read_image_gray(fname)
     raw_line = line.copy()
     if np.prod(line.shape)==0: return None
     if np.amax(line)==np.amin(line): return None
+
+    print("$$ trial=%d fname=%s line=%s" % (trial, fname, desc(line)))
 
     if not args.nocheck:
         check = check_line(np.amax(line)-line)
@@ -164,7 +169,7 @@ def process1(arg):
     else:
         assert "dew.png" in fname,"only apply to dewarped images"
 
-    line = lstm.prepare_line(line,args.pad)
+    line = lstm.prepare_line(line, args.pad)
     pred = network.predictString(line)
 
     if args.llocs:
@@ -267,7 +272,7 @@ def process1(arg):
 
 
 def safe_process1(arg):
-    trial,fname = arg
+    trial, fname = arg
     try:
         return process1(arg)
     except IOError as e:

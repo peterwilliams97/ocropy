@@ -37,14 +37,18 @@ import utils
 
 initial_range = 0.1
 
+def ddecode(k):
+    return k
+    return k.decode("utf-8")
+
 class RangeError(Exception):
     def __init__(self,s=None):
         Exception.__init__(self,s)
 
-def prepare_line(line,pad=16):
+def prepare_line(line, pad=16):
     """Prepare a line for recognition; this inverts it, transposes
     it, and pads it."""
-    line = line * 1.0/np.amax(line)
+    line = line * 1.0 / np.amax(line)
     line = np.amax(line)-line
     line = line.T
     if pad>0:
@@ -512,9 +516,10 @@ class LSTM(Network):
         self.allocate(1)
     def postLoad(self):
         self.allocate(getattr(self,"max_n",5000))
-    def allocate(self,n):
+    def allocate(self, n):
         """Allocate space for the internal state variables.
         `n` is the maximum sequence length that can be processed."""
+        print("$$ allocate: %s" % sorted(self.__dict__))
         ni,ns,na = self.dims
         vars = "cix ci gix gi gox go gfx gf"
         vars += " state output gierr gferr goerr cierr stateerr outerr"
@@ -582,19 +587,24 @@ class LSTM(Network):
 
 class Stacked(Network):
     """Stack two networks on top of each other."""
-    def __init__(self,nets):
+    def __init__(self, nets):
         self.nets = nets
         self.dstats = defaultdict(list)
+        print("## nets=%s" % type(nets))
+
     def walk(self):
+        print("## walk: self=%s=%s" % (self, sorted(self.__dict__)))
         yield self
         for sub in self.nets:
-            for x in sub.walk(): yield x
+            for x in sub.walk():
+                yield x
+
     def ninputs(self):
         return self.nets[0].ninputs()
     def noutputs(self):
         return self.nets[-1].noutputs()
     def forward(self,xs):
-        for i,net in enumerate(self.nets):
+        for i, net in enumerate(self.nets):
             xs = net.forward(xs)
         return xs
     def backward(self,deltas):
@@ -640,13 +650,14 @@ class Reversed(Network):
         return self.net.states()[::-1]
     def weights(self):
         for w,dw,n in self.net.weights():
-            yield w,dw,"Reversed/%s"%n
+            yield w, dw,"Reversed/%s"%n
 
 class Parallel(Network):
     """Run multiple networks in parallel on the same input."""
-    def __init__(self,*nets):
+    def __init__(self, *nets):
         self.nets = nets
     def walk(self):
+        print("** walk: %s=%s" % (self, sorted(self.__dict__)))
         yield self
         for sub in self.nets:
             for x in sub.walk(): yield x
@@ -698,11 +709,12 @@ def BIDILSTM(Ni,Ns,No):
     """A bidirectional LSTM, constructed from regular and reversed LSTMs."""
     lstm1 = LSTM(Ni,Ns)
     lstm2 = Reversed(LSTM(Ni,Ns))
-    bidi = Parallel(lstm1,lstm2)
-    assert No>1
+    bidi = Parallel(lstm1, lstm2)
+    assert No > 1
     # logreg = Logreg(2*Ns,No)
     logreg = Softmax(2*Ns,No)
-    stacked = Stacked([bidi,logreg])
+    stacked = Stacked([bidi, logreg])
+    print("$$ BIDILSTM stackded=%s" % stacked)
     return stacked
 
 ################################################################
@@ -842,43 +854,90 @@ def add_training_info(network):
 
 class SeqRecognizer:
     """Perform sequence recognition using BIDILSTM and alignment."""
-    def __init__(self,ninput,nstates,noutput=-1,codec=None,normalize=normalize_nfkc):
+    def __init__(self, ninput, nstates, noutput=-1, codec=None, normalize=normalize_nfkc):
         self.Ni = ninput
-        if codec: noutput = codec.size()
-        assert noutput>0
+        if codec:
+            noutput = codec.size()
+        assert noutput > 0
         self.No = noutput
-        self.lstm = BIDILSTM(ninput,nstates,noutput)
+        self.lstm = BIDILSTM(ninput, nstates, noutput)
         self.setLearningRate(1e-4)
         self.debug_align = 0
         self.normalize = normalize
         self.codec = codec
         self.clear_log()
+        print("$$ --------------------")
+
     def walk(self):
-        for x in self.lstm.walk(): yield x
+        print("$$ walk: %s" % self.lstm)
+        for x in self.lstm.walk():
+            yield x
+
     def clear_log(self):
         self.command_log = []
         self.error_log = []
         self.cerror_log = []
         self.key_log = []
-    def __setstate__(self,state):
+
+    def __setstate__(self, state):
+        print("$$a  self=%s" % sorted(self.__dict__))
+        print("$$b state=%s" % sorted(state))
         self.__dict__.update(state)
+        print("$$c  self=%s" % sorted(self.__dict__))
         self.upgrade()
+        print("$$d  self=%s" % sorted(self.__dict__))
+        print("$$ lstm=%s" % self.lstm)
+
     def upgrade(self):
-        if "last_trial" not in dir(self): self.last_trial = 0
-        if "command_log" not in dir(self): self.command_log = []
-        if "error_log" not in dir(self): self.error_log = []
-        if "cerror_log" not in dir(self): self.cerror_log = []
-        if "key_log" not in dir(self): self.key_log = []
+        d = {ddecode(k): v for k, v in self.__dict__.items()}
+        self.__dict__ = d
+        print("$$1 %s" % list(self.__dict__))
+        print("$$2 %s" % self)
+        keys = set(self.__dict__) # dir(self)
+        print("$$3 %s" % sorted(keys))
+        print("$$3a  self=%s" % sorted(self.__dict__))
+        if "last_trial" not in keys:
+            self.last_trial = 0
+            print("$$4  self=%s" % sorted(self.__dict__))
+        if "command_log" not in keys:
+            self.command_log = []
+            print("$$5  self=%s" % sorted(self.__dict__))
+        if "error_log" not in keys:
+            self.error_log = []
+            print("$$6  self=%s" % sorted(self.__dict__))
+        if "cerror_log" not in keys:
+            self.cerror_log = []
+            print("$$7  self=%s" % sorted(self.__dict__))
+        if "key_log" not in keys:
+            self.key_log = []
+            print("$$8  self=%s" % sorted(self.__dict__))
+        # self.lstm = BIDILSTM(ninput, nstates, noutput)
+
+        d = {ddecode(k): v for k, v in self.lstm.__dict__.items()}
+        self.lstm.__dict__ = d
+        print("$$ lstm = %s = %s" % (self.lstm, sorted(self.lstm.__dict__)))
+        nets = []
+        for i, net in enumerate(self.lstm.nets):
+            print("$$.:%d net = %s = %s" % (i, net, type(net)))
+            print("$$-:%d net = %s = %s" % (i, net, sorted(net.__dict__)))
+            d = {ddecode(k): v for k, v in net.__dict__.items()}
+            net.__dict__ = d
+            print("$$+:%d net = %s = %s" % (i, net, sorted(net.__dict__)))
+            nets.append(net)
+        self.lstm.nets = nets
+
     def info(self):
         self.net.info()
+
     def setLearningRate(self,r,momentum=0.9):
         self.lstm.setLearningRate(r,momentum)
+
     def predictSequence(self,xs):
         "Predict an integer sequence of codes."
-        assert xs.shape[1]==self.Ni,\
-            "wrong image height (image: %d, expected: %d)"%(xs.shape[1],self.Ni)
+        assert xs.shape[1]==self.Ni, "wrong image height (image: %d, expected: %d)"%(xs.shape[1],self.Ni)
         self.outputs = np.array(self.lstm.forward(xs))
         return translate_back(self.outputs)
+
     def trainSequence(self,xs,cs,update=1,key=None):
         "Train with an integer sequence of codes."
         assert xs.shape[1]==self.Ni,"wrong image height"
@@ -902,6 +961,7 @@ class SeqRecognizer:
         # training keys
         self.key_log.append(key)
         return result
+
     # we keep track of errors within the object; this even gets
     # saved to give us some idea of the training history
     def errors(self,range=10000,smooth=0):

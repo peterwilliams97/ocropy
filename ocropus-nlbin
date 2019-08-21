@@ -205,13 +205,15 @@ def process1(job):
 
     # estimate skew angle and rotate
     if args.maxskew>0:
-        if args.parallel<2: print_info("estimating skew angle")
+        if args.parallel<2:
+            print_info("estimating skew angle")
         flat, angle = estimate_skew(flat, args.bignore, args.maxskew, args.skewsteps)
     else:
         angle = 0
 
     # estimate low and high thresholds
-    if args.parallel<2: print_info("estimating thresholds")
+    if args.parallel<2:
+        print_info("estimating thresholds")
     lo, hi = estimate_thresholds(flat, args.bignore, args.escale, args.lo, args.hi, args.debug)
     # rescale the image to get the gray scale image
     if args.parallel<2: print_info("rescaling")

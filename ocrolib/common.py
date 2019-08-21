@@ -3,8 +3,6 @@
 ### common functions for data structures, file name manipulation, etc.
 ################################################################
 
-from __future__ import print_function
-
 import os
 import os.path
 import re
@@ -14,6 +12,7 @@ import unicodedata
 import inspect
 import glob
 import pickle
+import gzip
 from ocrolib.exceptions import (BadClassLabel, BadInput, FileNotFound, OcropusException)
 
 import numpy
@@ -85,8 +84,9 @@ def project_text(s,kind="exact"):
 
 def read_text(fname,nonl=1,normalize=1):
     """Read text. This assumes files are in unicode.
-    By default, it removes newlines and normalizes the
-    text for OCR processing with `normalize_text`"""
+        By default, it removes newlines and normalizes the
+        text for OCR processing with `normalize_tex
+    """
     with codecs.open(fname,"r","utf-8") as stream:
         result = stream.read()
     if nonl and len(result)>0 and result[-1]=='\n':
@@ -97,8 +97,9 @@ def read_text(fname,nonl=1,normalize=1):
 
 def write_text(fname,text,nonl=0,normalize=1):
     """Write text. This assumes files are in unicode.
-    By default, it removes newlines and normalizes the
-    text for OCR processing with `normalize_text`"""
+        By default, it removes newlines and normalizes the
+        text for OCR processing with `normalize_text`
+    """
     if normalize:
         text = normalize_text(text)
     with codecs.open(fname,"w","utf-8") as stream:
@@ -110,7 +111,7 @@ def write_text(fname,text,nonl=0,normalize=1):
 ### Image I/O
 ################################################################
 
-def pil2array(im,alpha=0):
+def pil2array(im, alpha=0):
     if im.mode=="L":
         a = numpy.fromstring(im.tobytes(),'B')
         a.shape = im.size[1],im.size[0]
@@ -122,7 +123,8 @@ def pil2array(im,alpha=0):
     if im.mode=="RGBA":
         a = numpy.fromstring(im.tobytes(),'B')
         a.shape = im.size[1],im.size[0],4
-        if not alpha: a = a[:,:,:3]
+        if not alpha:
+            a = a[:,:,:3]
         return a
     return pil2array(im.convert("L"))
 
@@ -152,12 +154,13 @@ def isintegerarray(a):
     return a.dtype in [dtype('int32'),dtype('int64'),dtype('uint32'),dtype('uint64')]
 
 @checks(str,pageno=int,_=GRAYSCALE)
-def read_image_gray(fname,pageno=0):
+def read_image_gray(fname, pageno=0):
     """Read an image and returns it as a floating point array.
     The optional page number allows images from files containing multiple
     images to be addressed.  Byte and short arrays are rescaled to
     the range 0...1 (unsigned) or -1...1 (signed)."""
-    if type(fname)==tuple: fname,pageno = fname
+    if type(fname)==tuple:
+        fname, pageno = fname
     assert pageno==0
     pil = PIL.Image.open(fname)
     a = pil2array(pil)
@@ -194,11 +197,13 @@ def write_image_gray(fname,image,normalize=0,verbose=0):
 def read_image_binary(fname,dtype='i',pageno=0):
     """Read an image from disk and return it as a binary image
     of the given dtype."""
-    if type(fname)==tuple: fname,pageno = fname
+    if type(fname)==tuple:
+        fname, pageno = fname
     assert pageno==0
     pil = PIL.Image.open(fname)
     a = pil2array(pil)
-    if a.ndim==3: a = amax(a,axis=2)
+    if a.ndim==3:
+        a = amax(a,axis=2)
     return array(a>0.5*(amin(a)+amax(a)),dtype)
 
 @checks(str,ABINARY2)
@@ -218,7 +223,7 @@ def rgb2int(a):
     last axis into a rank 2 array containing 32 bit RGB values."""
     assert a.ndim==3
     assert a.dtype==dtype('B')
-    return array(0xffffff&((0x10000*a[:,:,0])|(0x100*a[:,:,1])|a[:,:,2]),'i')
+    return array(0xffffff & ((0x10000*a[:,:,0]) | (0x100*a[:,:,1]) | a[:,:,2]), 'i')
 
 @checks(AINT2,_=AINT3)
 def int2rgb(image):
@@ -269,7 +274,8 @@ def write_line_segmentation(fname,image):
 @checks(str,_=PAGESEG)
 def read_page_segmentation(fname):
     """Reads a page segmentation, that is an RGB image whose values
-    encode the segmentation of a page.  Returns an int array."""
+        encode the segmentation of a page.  Returns an int array.
+    """
     pil = PIL.Image.open(fname)
     a = pil2array(pil)
     assert a.dtype==dtype('B')
@@ -280,7 +286,8 @@ def read_page_segmentation(fname):
 
 def write_page_segmentation(fname,image):
     """Writes a page segmentation, that is an RGB image whose values
-    encode the segmentation of a page."""
+        encode the segmentation of a page.
+    """
     assert image.ndim==2
     assert image.dtype in [dtype('int32'),dtype('int64')]
     a = int2rgb(make_seg_white(image))
@@ -312,10 +319,11 @@ class RegionExtractor:
         self.cache = {}
     def setImage(self,image):
         return self.setImageMasked(image)
-    def setImageMasked(self,image,mask=None,lo=None,hi=None):
+    def setImageMasked(self, image, mask=None, lo=None, hi=None):
         """Set the image to be iterated over.  This should be an RGB image,
-        ndim==3, dtype=='B'.  This picks a subset of the segmentation to iterate
-        over, using a mask and lo and hi values.."""
+            ndim==3, dtype=='B'.  This picks a subset of the segmentation to iterate
+            over, using a mask and lo and hi values.
+        """
         assert image.dtype==dtype('B') or image.dtype==dtype('i'),"image must be type B or i"
         if image.ndim==3: image = rgb2int(image)
         assert image.ndim==2,"wrong number of dimensions"
@@ -401,7 +409,6 @@ class RegionExtractor:
         return where(mask,subimage,bg)
 
 
-
 ################################################################
 ### Object reading and writing
 ### This handles reading and writing zipped files directly,
@@ -420,11 +427,23 @@ def save_object(fname,obj,zip=0):
             pickle.dump(obj, stream, 2)
 
 def unpickle_find_global(mname, cname):
-    if mname=="lstm.lstm":
-        return getattr(lstm,cname)
-    if not mname in sys.modules.keys():
-        exec("import " + åmname)
-    return getattr(sys.modules[mname],cname)
+    print("$$ unpickle_find_global: mname=%s cname=%s" % (mname, cname))
+    if mname == "lstm.lstm":
+        return getattr(lstm, cname)
+    if mname == "__builtin__":
+        return getattr(sys.modules['builtins'], cname)
+    if mname not in sys.modules.keys():
+        exec("import " + mname)
+
+    modules = [s for s in sys.modules if "ocrolib" in s]
+    modules2 = [s for s in sys.modules if "lstm" in s]
+    assert mname in sys.modules, (mname, len(sys.modules), modules, modules2, mname)
+    return getattr(sys.modules[mname], cname)
+
+
+class SafeUnpickler(pickle.Unpickler):
+    find_class = staticmethod(unpickle_find_global)
+
 
 def load_object(fname,zip=0,nofind=0,verbose=0):
     """Loads an object from disk. By default, this handles zipped files
@@ -438,12 +457,13 @@ def load_object(fname,zip=0,nofind=0,verbose=0):
         zip = 1
     if zip>0:
         # with gzip.GzipFile(fname,"rb") as stream:
-        with os.popen("gunzip < '%s'"%fname,"rb") as stream:
-            unpickler = pickle.Unpickler(stream)
-            unpickler.find_global = unpickle_find_global
+        with gzip.open(fname, mode='rb') as stream:
+        # with os.popen("gunzip < '%s'" % fname, "r") as stream:
+            unpickler = SafeUnpickler(stream, encoding="latin1")
             return unpickler.load()
+
     else:
-        with open(fname,"rb") as stream:
+        with open(fname, "rb") as stream:
             unpickler = pickle.Unpickler(stream)
             unpickler.find_global = unpickle_find_global
             return unpickler.load()
@@ -527,14 +547,18 @@ def finddir(name):
     (This needs to be integrated better with setup.py and the build system.)"""
     local = getlocal()
     path = name
-    if os.path.exists(path) and os.path.isdir(path): return path
+    if os.path.exists(path) and os.path.isdir(path):
+        return path
     path = local+name
-    if os.path.exists(path) and os.path.isdir(path): return path
+    if os.path.exists(path) and os.path.isdir(path):
+        return path
     _,tail = os.path.split(name)
     path = tail
-    if os.path.exists(path) and os.path.isdir(path): return path
+    if os.path.exists(path) and os.path.isdir(path):
+        return path
     path = local+tail
-    if os.path.exists(path) and os.path.isdir(path): return path
+    if os.path.exists(path) and os.path.isdir(path):
+        return path
     raise FileNotFound("file '"+path+"' not found in . or /usr/local/share/ocropus/")
 
 @checks(str)

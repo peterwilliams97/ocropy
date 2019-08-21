@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import __builtin__ as python
 import random as pyrandom
 import sys
 import os.path
@@ -18,7 +17,7 @@ from ocrolib import hocr
 parser = argparse.ArgumentParser("""
 Construct an HTML output file in hOCR format by putting together
 the recognition results for each page in sequence.
-You should usually invoke this program as 
+You should usually invoke this program as
 
     ocropus-hocr 'book/????.bin.png'
 
@@ -42,21 +41,23 @@ def E(*args):
     args = [str(x) for x in args]
     sys.stderr.write(" ".join(args))
     sys.stderr.write("\n")
+
 def P(*args):
     ostream.write("".join(args)+"\n")
+
 def PN(*args):
     ostream.write("".join(args))
 
 E("writing to",args.output)
 median_xheight = None
 dirs = [ocrolib.allsplitext(name)[0] for name in args.files]
-xhfiles = python.sum([glob.glob(d+"/??????.xheight") for d in dirs],[])
+xhfiles = sum([glob.glob(d+"/??????.xheight") for d in dirs],[])
 if len(xhfiles)>5:
     xheights = [float(ocrolib.read_text(f)) for f in xhfiles]
     if len(xheights)>0:
         median_xheight = np.median(xheights)
-else:    
-    lfiles = python.sum([glob.glob(d+"/??????.bin.png") for d in dirs],[])
+else:
+    lfiles = sum([glob.glob(d+"/??????.bin.png") for d in dirs],[])
     pyrandom.shuffle(lfiles)
     if len(lfiles)>0:
         median_xheight = 0.5*np.median([imread(f).shape[0] for f in lfiles[:100]])
@@ -67,15 +68,14 @@ P(hocr.header())
 last_coords = None
 
 for arg in args.files:
-    base,_ = ocrolib.allsplitext(arg)
+    base, _ = ocrolib.allsplitext(arg)
     try:
-        E("===",arg)
+        E("===", arg)
         image = ocrolib.read_image_binary(arg)
         height, width = image.shape
         P("<div class='ocr_page' title='image %s; bbox 0 0 %d %d'>"%(arg,width,height))
 
-        # to proceed, we need a pseg file and a
-        # subdirectory containing text lines
+        # to proceed, we need a pseg file and a subdirectory containing text lines
 
         if not os.path.exists(base+".pseg.png"):
             E("%s: no such file"%(base+".pseg.png",))
@@ -91,7 +91,7 @@ for arg in args.files:
         pseg = ocrolib.read_page_segmentation(base+".pseg.png")
         regions = ocrolib.RegionExtractor()
         regions.setPageLines(pseg)
-        for i in range(1,regions.length()):
+        for i in range(1, regions.length()):
 
             # keep track of the bounding box information for each line
             # and insert paragraph breaks as needed
@@ -102,7 +102,7 @@ for arg in args.files:
                 lx0,ly0 = last_coords
                 dx,dy = x0-lx0,y1-ly0
                 par = 0
-                if dy>0: 
+                if dy>0:
                     par = 0 # column break... moving upwards
                 else:
                     if median_xheight is not None:
@@ -139,7 +139,7 @@ for arg in args.files:
                 if perc!=100:
                     style += "font-size:%d%%;"%perc
 
-            # output geometric information 
+            # output geometric information
 
             info += "bbox %d %d %d %d"%(x0,y0,x1,y1)
             if os.path.exists(lbase+".baseline"):
