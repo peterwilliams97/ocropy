@@ -31,11 +31,10 @@ def label(image,**kw):
     return measurements.label(image,**kw)
 
 @checks(AINT2)
-def find_objects(image,**kw):
-    """Redefine the scipy.ndimage.measurements.find_objects function to
-    work with a wider range of data types.  The default function
-    is inconsistent about the data types it accepts on different
-    platforms."""
+def find_objects(image, **kw):
+    """Redefine the find_objects function to work with a wider range of data types.  The default
+        function is inconsistent about the data types it accepts on different platforms.
+    """
     try:
         return measurements.find_objects(image,**kw)
     except:
@@ -43,7 +42,7 @@ def find_objects(image,**kw):
     types = ["int32","uint32","int64","uint64","int16","uint16"]
     for t in types:
         try:
-            return measurements.find_objects(array(image,dtype=t),**kw)
+            return measurements.find_objects(array(image,dtype=t), **kw)
         except:
             pass
     # let it raise the same exception as before
@@ -196,15 +195,15 @@ def propagate_labels(image,labels,conflict=0):
     return outputs[rlabels]
 
 @checks(ABINARY2,True)
-def select_regions(binary,f,min=0,nbest=100000):
-    """Given a scoring function f over slice tuples (as returned by
-    find_objects), keeps at most nbest regions whose scores is higher
-    than min."""
-    labels,n = label(binary)
+def select_regions(binary, f, min=0, nbest=100000):
+    """Given a scoring function f over slice tuples (as returned by find_objects), keeps at most
+        nbest regions whose scores is higher than min.
+    """
+    labels, n = label(binary)
     objects = find_objects(labels)
     scores = [f(o) for o in objects]
     best = argsort(scores)
-    keep = zeros(len(objects)+1,'i')
+    keep = zeros(len(objects)+1, 'i')
     if nbest > 0:
         for i in best[-nbest:]:
             if scores[i]<=min: continue

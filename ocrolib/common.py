@@ -12,6 +12,7 @@ import unicodedata
 import inspect
 import glob
 import pickle
+import numpy as np
 import gzip
 from ocrolib.exceptions import (BadClassLabel, BadInput, FileNotFound, OcropusException)
 
@@ -239,7 +240,7 @@ def int2rgb(image):
 
 @checks(LIGHTSEG,_=DARKSEG)
 def make_seg_black(image):
-    assert isintegerarray(image),"%s: wrong type for segmentation"%image.dtype
+    assert isintegerarray(image),"%s: wrong type for segmentation" % image.dtype
     image = image.copy()
     image[image==0xffffff] = 0
     return image
@@ -273,15 +274,19 @@ def write_line_segmentation(fname,image):
 
 @checks(str,_=PAGESEG)
 def read_page_segmentation(fname):
-    """Reads a page segmentation, that is an RGB image whose values
-        encode the segmentation of a page.  Returns an int array.
+    """Reads a page segmentation, that is an RGB image whose values encode the segmentation of a
+        page.  Returns an int array.
     """
     pil = PIL.Image.open(fname)
     a = pil2array(pil)
     assert a.dtype==dtype('B')
     assert a.ndim==3
+    print("$$ read_page_segmentation: fname=%s a=%s" % (fname, desc(a)))
     segmentation = rgb2int(a)
+    print("$$ read_page_segmentation: segmentation=%s" % desc(segmentation))
     segmentation = make_seg_black(segmentation)
+    print("$$ read_page_segmentation: segmentation=%s" % desc(segmentation))
+
     return segmentation
 
 def write_page_segmentation(fname,image):
@@ -302,7 +307,34 @@ def iulib_page_iterator(files):
 def norm_max(a):
     return a/amax(a)
 
-def pad_by(image,r,dtype=None):
+
+def desc(a):
+    return "%s:%s" % (list(a.shape), a.dtype)
+
+def hexs(v):
+    try:
+        return '0x%X' % v
+    except:
+        return str(v)
+
+def imageDescribe(title, image):
+    print("-" * 50)
+    print("$$ %s=%s" % (title, desc(image)))
+    flat = np.ravel(image)
+    counts = np.bincount(flat)
+    total = np.sum(counts)
+    nonzero = np.sum(counts != 0)
+    print("total=%d non-zero=%d" % (total, nonzero))
+    print("$$ counts=%s=%s" % (desc(counts), counts[:4]))
+    order = np.flip(np.argsort(counts))
+    for i, o in enumerate(order[:20]):
+        c = counts[o]
+        f = c / total
+        print("%6d: 0x%05x %7d  %6.3f%%" % (i, o, c, f*100.0))
+        if c == 0:
+            break
+
+def pad_by(image, r, dtype=None):
     """Symmetrically pad the image by the given amount.
     FIXME: replace by scipy version."""
     if dtype is None: dtype = image.dtype
@@ -310,6 +342,7 @@ def pad_by(image,r,dtype=None):
     result = zeros((w+2*r,h+2*r))
     result[r:(w+r),r:(h+r)] = image
     return result
+
 class RegionExtractor:
     """A class facilitating iterating over the parts of a segmentation."""
     def __init__(self):
@@ -319,23 +352,38 @@ class RegionExtractor:
         self.cache = {}
     def setImage(self,image):
         return self.setImageMasked(image)
+
     def setImageMasked(self, image, mask=None, lo=None, hi=None):
         """Set the image to be iterated over.  This should be an RGB image,
             ndim==3, dtype=='B'.  This picks a subset of the segmentation to iterate
             over, using a mask and lo and hi values.
         """
+        print("$$ setImageMasked: image=%s mask=%s lo=%s hi=%s" % (
+            desc(image), hexs(mask), hexs(lo), hexs(hi)))
         assert image.dtype==dtype('B') or image.dtype==dtype('i'),"image must be type B or i"
-        if image.ndim==3: image = rgb2int(image)
-        assert image.ndim==2,"wrong number of dimensions"
+        if image.ndim==3:
+            image = rgb2int(image)
+        imageDescribe("image", image)
+        assert image.ndim==2, "wrong number of dimensions"
         self.image = image
         labels = image
-        if lo is not None: labels[labels<lo] = 0
-        if hi is not None: labels[labels>hi] = 0
-        if mask is not None: labels = bitwise_and(labels,mask)
-        labels,correspondence = morph.renumber_labels_ordered(labels,correspondence=1)
+        if lo is not None:
+            labels[labels<lo] = 0
+        if hi is not None:
+            labels[labels>hi] = 0
+        if mask is not None:
+            labels = bitwise_and(labels, mask)
+        imageDescribe("labels", labels)
+        labels, correspondence = morph.renumber_labels_ordered(labels,correspondence=1)
         self.labels = labels
         self.correspondence = correspondence
         self.objects = [None]+morph.find_objects(labels)
+        print("$$ setImageMasked: objects=%d" % len(self.objects))
+        sizes = [o for o in self.objects]
+        sizes.sort(key=lambda u: -sliceSize(u))
+        for i, o in enumerate(sizes[:20]):
+            print("%5d: %s %s %d" % (i, o, sliceDims(o), sliceSize(o)))
+
     def setPageColumns(self,image):
         """Set the image to be iterated over.  This should be an RGB image,
         ndim==3, dtype=='B'.  This iterates over the columns."""
@@ -345,10 +393,13 @@ class RegionExtractor:
         ndim==3, dtype=='B'.  This iterates over the paragraphs (if present
         in the segmentation)."""
         self.setImageMasked(image,0xffff00,hi=0x800000)
-    def setPageLines(self,image):
+
+    def setPageLines(self, image):
         """Set the image to be iterated over.  This should be an RGB image,
-        ndim==3, dtype=='B'.  This iterates over the lines."""
-        self.setImageMasked(image,0xffffff,hi=0x800000)
+            ndim==3, dtype=='B'.  This iterates over the lines.
+        """
+        self.setImageMasked(image, 0xffffff, hi=0x800000)
+
     def id(self,i):
         """Return the RGB pixel value for this segment."""
         return self.correspondence[i]
@@ -366,18 +417,21 @@ class RegionExtractor:
         """Return y0 (row) for the end of the box."""
         h = self.image.shape[0]
         return h-self.bbox(i)[0]-1
-    def bbox(self,i):
-        """Return the bounding box in raster coordinates
-        (row0,col0,row1,col1)."""
+
+    def bbox(self, i):
+        """Return the bounding box in raster coordinates (row0,col0,row1,col1).
+        """
         r = self.objects[i]
-        # print("@@@bbox", i, r)
-        return (r[0].start,r[1].start,r[0].stop,r[1].stop)
+        print("@@@bbox", i, r)
+        return (r[0].start, r[1].start, r[0].stop, r[1].stop)
+
     def bboxMath(self,i):
-        """Return the bounding box in math coordinates
-        (row0,col0,row1,col1)."""
+        """Return the bounding box in math coordinates (row0,col0,row1,col1).
+        """
         h = self.image.shape[0]
         (y0,x0,y1,x1) = self.bbox(i)
         return (h-y1-1,x0,h-y0-1,x1)
+
     def length(self):
         """Return the number of components."""
         return len(self.objects)
@@ -408,6 +462,15 @@ class RegionExtractor:
         subimage = sl.cut(image,(r0,c0,r0+mh-2*margin,c0+mw-2*margin),margin,bg=bg)
         return where(mask,subimage,bg)
 
+def sliceSize(u):
+    if u is None or not sl.is_slices(u):
+        return -1
+    return sl.volume(u)
+
+def sliceDims(u):
+    if u is None or not sl.is_slices(u):
+        return None
+    return sl.dims(u)
 
 ################################################################
 ### Object reading and writing

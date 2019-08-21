@@ -11,18 +11,23 @@ def is_slices(u):
         if type(s)!=slice:
             return False
     return True
+
 def dims(s):
     """List of dimensions of the slice list."""
     return tuple([x.stop-x.start for x in s])
+
 def dim(s,i):
     """Dimension of the slice list for index i."""
     return s[i].stop-s[i].start
+
 def dim0(s):
     """Dimension of the slice list for dimension 0."""
     return s[0].stop-s[0].start
+
 def dim1(s):
     """Dimension of the slice list for dimension 1."""
     return s[1].stop-s[1].start
+
 def raster(u):
     """Return (row0,row1,col0,col1)."""
     return (u[0].start,u[0].stop,u[1].start,u[1].stop)
