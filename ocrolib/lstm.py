@@ -37,9 +37,6 @@ import utils
 
 initial_range = 0.1
 
-def ddecode(k):
-    return k
-    return k.decode("utf-8")
 
 class RangeError(Exception):
     def __init__(self,s=None):
@@ -889,8 +886,6 @@ class SeqRecognizer:
         print("$$ lstm=%s" % self.lstm)
 
     def upgrade(self):
-        d = {ddecode(k): v for k, v in self.__dict__.items()}
-        self.__dict__ = d
         print("$$1 %s" % list(self.__dict__))
         print("$$2 %s" % self)
         keys = set(self.__dict__) # dir(self)
@@ -911,20 +906,8 @@ class SeqRecognizer:
         if "key_log" not in keys:
             self.key_log = []
             print("$$8  self=%s" % sorted(self.__dict__))
-        # self.lstm = BIDILSTM(ninput, nstates, noutput)
 
-        d = {ddecode(k): v for k, v in self.lstm.__dict__.items()}
-        self.lstm.__dict__ = d
         print("$$ lstm = %s = %s" % (self.lstm, sorted(self.lstm.__dict__)))
-        nets = []
-        for i, net in enumerate(self.lstm.nets):
-            print("$$.:%d net = %s = %s" % (i, net, type(net)))
-            print("$$-:%d net = %s = %s" % (i, net, sorted(net.__dict__)))
-            d = {ddecode(k): v for k, v in net.__dict__.items()}
-            net.__dict__ = d
-            print("$$+:%d net = %s = %s" % (i, net, sorted(net.__dict__)))
-            nets.append(net)
-        self.lstm.nets = nets
 
     def info(self):
         self.net.info()
