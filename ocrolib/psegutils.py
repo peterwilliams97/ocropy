@@ -36,7 +36,7 @@ def blackout_images(image,ticlass):
         ocropy.fill_rect(image,r,0)
         r.pad_by(-5,-5)
         ocropy.fill_rect(image,r,255)
-        
+
 def binary_objects(binary):
     labels,n = morph.label(binary)
     objects = morph.find_objects(labels)
@@ -109,26 +109,26 @@ def extract(image,y0,x0,y1,x1,mode='nearest',cval=0):
         return sub
 
 @checks(ARANK(2),True,pad=int,expand=int,_=GRAYSCALE)
-def extract_masked(image,linedesc,pad=5,expand=0):
+def extract_masked(image, linedesc, pad=5, expand=0):
     """Extract a subimage from the image using the line descriptor.
     A line descriptor consists of bounds and a mask."""
-    y0,x0,y1,x1 = [int(x) for x in [linedesc.bounds[0].start,linedesc.bounds[1].start, \
-                  linedesc.bounds[0].stop,linedesc.bounds[1].stop]]
+    y0,x0,y1,x1 = [int(x) for x in [linedesc.bounds[0].start, linedesc.bounds[1].start,
+                                    linedesc.bounds[0].stop, linedesc.bounds[1].stop]]
     if pad>0:
         mask = pad_image(linedesc.mask,pad,cval=0)
     else:
         mask = linedesc.mask
-    line = extract(image,y0-pad,x0-pad,y1+pad,x1+pad)
+    line = extract(image, y0-pad, x0-pad, y1+pad, x1+pad)
     if expand>0:
-        mask = filters.maximum_filter(mask,(expand,expand))
-    line = np.where(mask,line,np.amax(line))
+        mask = filters.maximum_filter(mask, (expand, expand))
+    line = np.where(mask, line, np.amax(line))
     return line
 
-def reading_order(lines,highlight=None,debug=0):
-    """Given the list of lines (a list of 2D slices), computes
-    the partial reading order.  The output is a binary 2D array
-    such that order[i,j] is true if line i comes before line j
-    in reading order."""
+def reading_order(lines, highlight=None, debug=0):
+    """Given the list of lines (a list of 2D slices), computes the partial reading order.  The
+        output is a binary 2D array such that order[i, j] is true if line i comes before line j
+        in reading order.
+    """
     order = np.zeros((len(lines),len(lines)),'B')
     def x_overlaps(u,v):
         return u[1].start<v[1].stop and u[1].stop>v[1].start
@@ -152,7 +152,8 @@ def reading_order(lines,highlight=None,debug=0):
                     order[i,j] = 1
             else:
                 if [w for w in lines if separates(w,u,v)]==[]:
-                    if left_of(u,v): order[i,j] = 1
+                    if left_of(u,v):
+                        order[i,j] = 1
             if j==highlight and order[i,j]:
                 print((i, j), end=' ')
                 y0,x0 = sl.center(lines[i])
@@ -164,18 +165,22 @@ def reading_order(lines,highlight=None,debug=0):
     return order
 
 def topsort(order):
-    """Given a binary array defining a partial order (o[i,j]==True means i<j),
-    compute a topological sort.  This is a quick and dirty implementation
-    that works for up to a few thousand elements."""
+    """Given a binary array defining a partial order (o[i,j]==True means i<j), compute a topological
+        sort.  This is a quick and dirty implementation that works for up to a few thousand elements.
+    """
     n = len(order)
     visited = np.zeros(n)
     L = []
+    print("$$ topsort: order=%s n=%d" % (list(order.shape), n))
+
     def visit(k):
-        if visited[k]: return
+        if visited[k]:
+            return
         visited[k] = 1
-        for l in find(order[:,k]):
+        for l in find(order[:, k]):
             visit(l)
         L.append(k)
+
     for k in range(n):
         visit(k)
     return L #[::-1]

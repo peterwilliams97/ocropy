@@ -131,13 +131,13 @@ def pil2array(im, alpha=0):
 
 def array2pil(a):
     if a.dtype==dtype("B"):
-        if a.ndim==2:
+        if a.ndim == 2:
             return PIL.Image.frombytes("L",(a.shape[1],a.shape[0]),a.tostring())
-        elif a.ndim==3:
+        elif a.ndim == 3:
             return PIL.Image.frombytes("RGB",(a.shape[1],a.shape[0]),a.tostring())
         else:
             raise OcropusException("bad image rank")
-    elif a.dtype==dtype('float32'):
+    elif a.dtype == dtype('float32'):
         return PIL.Image.fromstring("F",(a.shape[1],a.shape[0]),a.tostring())
     else:
         raise OcropusException("unknown image type")
@@ -232,7 +232,7 @@ def int2rgb(image):
     last axis into a rank 2 array containing 32 bit RGB values."""
     assert image.ndim==2
     assert isintarray(image)
-    a = zeros(list(image.shape)+[3],'B')
+    a = zeros(list(image.shape)+[3], 'B')
     a[:,:,0] = (image>>16)
     a[:,:,1] = (image>>8)
     a[:,:,2] = image
@@ -290,8 +290,7 @@ def read_page_segmentation(fname):
     return segmentation
 
 def write_page_segmentation(fname,image):
-    """Writes a page segmentation, that is an RGB image whose values
-        encode the segmentation of a page.
+    """Writes a page segmentation, that is an RGB image whose values encode the segmentation of a page.
     """
     assert image.ndim==2
     assert image.dtype in [dtype('int32'),dtype('int64')]
@@ -943,11 +942,11 @@ def midrange(image,frac=0.5):
     (for quick thresholding)."""
     return frac*(amin(image)+amax(image))
 
-def remove_noise(line,minsize=8):
+def remove_noise(line, minsize=8):
     """Remove small pixels from an image."""
     if minsize==0: return line
     bin = (line>0.5*amax(line))
-    labels,n = morph.label(bin)
+    labels, n = morph.label(bin)
     sums = measurements.sum(bin,labels,range(n+1))
     sums = sums[labels]
     good = minimum(bin,1-(sums>0)*(sums<minsize))

@@ -27,6 +27,12 @@ For each page like 'book/0001.bin.png', it uses the following files:
     book/0001.bin.png            # page image
     book/0001.pseg.png           # page segmentation
     book/0001/010001.txt         # recognizer output for lines
+
+      # perform binarization
+    ./ocropus-nlbin tests/ersch.png -o book
+
+    # perform page layout analysis
+    ./ocropus-gpageseg 'book/????.bin.png'
 """
 
 desc = common.desc

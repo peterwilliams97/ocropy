@@ -83,7 +83,8 @@ group_column.add_argument('--csminaspect',type=float,default=1.1,
 # output parameters
 group_output = parser.add_argument_group('output parameters')
 group_output.add_argument('--gray',action='store_true',
-                    help='output grayscale lines as well, which are extracted from the grayscale version of the pages, default: %(default)s')
+                    help='output grayscale lines as well, which are extracted from the grayscale ' +
+                         'version of the pages, default: %(default)s')
 group_output.add_argument('-p','--pad',type=int,default=3,
                     help='padding for extracted lines, default: %(default)s')
 group_output.add_argument('-e','--expand',type=int,default=3,
@@ -114,17 +115,25 @@ def norm_max(v):
 
 
 def check_page(image):
-    if len(image.shape)==3: return "input image is color image %s"%(image.shape,)
-    if np.mean(image)<np.median(image): return "image may be inverted"
-    h,w = image.shape
-    if h<600: return "image not tall enough for a page image %s"%(image.shape,)
-    if h>10000: return "image too tall for a page image %s"%(image.shape,)
-    if w<600: return "image too narrow for a page image %s"%(image.shape,)
-    if w>10000: return "line too wide for a page image %s"%(image.shape,)
+    if len(image.shape)==3:
+        return "input image is color image %s"%(image.shape,)
+    if np.mean(image) < np.median(image):
+        return "image may be inverted"
+    h, w = image.shape
+    if h<600:
+        return "image not tall enough for a page image %s"%(image.shape,)
+    if h>10000:
+        return "image too tall for a page image %s"%(image.shape,)
+    if w<600:
+        return "image too narrow for a page image %s"%(image.shape,)
+    if w>10000:
+        return "line too wide for a page image %s"%(image.shape,)
     slots = int(w*h*1.0/(30*30))
     _,ncomps = measurements.label(image>np.mean(image))
-    if ncomps<10: return "too few connected components for a page image (got %d)"%(ncomps,)
-    if ncomps>slots: return "too many connnected components for a page image (%d > %d)"%(ncomps,slots)
+    if ncomps<10:
+        return "too few connected components for a page image (got %d)"%(ncomps,)
+    if ncomps>slots:
+        return "too many connnected components for a page image (%d > %d)"%(ncomps,slots)
     return None
 
 
@@ -414,7 +423,7 @@ def process1(job):
     if args.gray:
         if os.path.exists(base+".nrm.png"):
             gray = ocrolib.read_image_gray(base+".nrm.png")
-            checktype(gray,GRAYSCALE)
+            checktype(gray, GRAYSCALE)
         else:
             print_error("Grayscale version %s.nrm.png not found. Use ocropus-nlbin for creating " +
                         "normalized grayscale version of the pages as well." % base)
@@ -442,20 +451,22 @@ def process1(job):
     if np.amax(segmentation) > args.maxlines:
         print_error("%s: too many lines %g" % (fname, np.amax(segmentation)))
         return
-    if not args.quiet: print_info("number of lines %g" % np.amax(segmentation))
+    if not args.quiet:
+        print_info("number of lines %g" % np.amax(segmentation))
 
     # compute the reading order
 
     if not args.quiet:
         print_info("finding reading order")
-    lines = psegutils.compute_lines(segmentation,scale)
+    lines = psegutils.compute_lines(segmentation, scale)
     order = psegutils.reading_order([l.bounds for l in lines])
     lsort = psegutils.topsort(order)
+    print("$$ lsort = %d = %s" % (len(lsort), lsort[:10]))
 
     # renumber the labels so that they conform to the specs
 
     nlabels = np.amax(segmentation) + 1
-    renumber = np.zeros(nlabels,'i')
+    renumber = np.zeros(nlabels, 'i')
     for i, v in enumerate(lsort):
         renumber[lines[v].label] = 0x010000+(i+1)
     segmentation = renumber[segmentation]
@@ -469,12 +480,12 @@ def process1(job):
     lines = [lines[i] for i in lsort]
     ocrolib.write_page_segmentation("%s.pseg.png" % outputdir, segmentation)
     cleaned = ocrolib.remove_noise(binary, args.noise)
-    for i,l in enumerate(lines):
+    for i, l in enumerate(lines):
         binline = psegutils.extract_masked(1-cleaned, l, pad=args.pad, expand=args.expand)
         ocrolib.write_image_binary("%s/01%04x.bin.png"%(outputdir,i+1), binline)
         if args.gray:
-            grayline = psegutils.extract_masked(gray,l,pad=args.pad,expand=args.expand)
-            ocrolib.write_image_gray("%s/01%04x.nrm.png"%(outputdir,i+1),grayline)
+            grayline = psegutils.extract_masked(gray, l, pad=args.pad,expand=args.expand)
+            ocrolib.write_image_gray("%s/01%04x.nrm.png"%(outputdir,i+1), grayline)
     print_info("%6d  %s %4.1f %d" % (i, fname,  scale,  len(lines)))
 
 
