@@ -69,17 +69,16 @@ def normalize_raw_image(raw):
 
 def estimate_local_whitelevel(image, zoom=0.5, perc=80, size=20):
     """flatten it by estimating the local whitelevel
-    zoom for page background estimation,
-    smaller=faster, default: %(default)s
-    percentage for filters, default: %(default)s
-    size for filters, default: %(default)s
+        zoom for page background estimation,smaller=faster
+        percentage for filters
+        size for filters
     """
     m = interpolation.zoom(image, zoom)
     m = filters.percentile_filter(m, perc, size=(size, 2))
     m = filters.percentile_filter(m, perc, size=(2, size))
     m = interpolation.zoom(m, 1.0/zoom)
     w, h = np.minimum(np.array(image.shape), np.array(m.shape))
-    flat = np.clip(image[:w, :h]-m[:w, :h]+1, 0, 1)
+    flat = np.clip(image[:w, :h] - m[:w, :h] + 1, 0, 1)
     return flat
 
 
@@ -101,28 +100,34 @@ def estimate_skew(flat, bignore=0.1, maxskew=2, skewsteps=8):
 
 def estimate_thresholds(flat, bignore=0.1, escale=1.0, lo=5, hi=90):
     """# estimate low and high thresholds
-        ignore this much of the border for threshold estimation, default: %(default)s
-        scale for estimating a mask over the text region, default: %(default)s
-        lo percentile for black estimation, default: %(default)s
-        hi percentile for white estimation, default: %(default)s
+        bignore: ignore this much of the border for threshold estimation
+        escale: for estimating a mask over the text region
+        lo: percentile for black estimation
+        hi: percentile for white estimation
     """
     d0, d1 = flat.shape
     o0, o1 = int(bignore*d0), int(bignore*d1)
     est = flat[o0:d0-o0, o1:d1-o1]
     if escale > 0:
-        # by default, we use only regions that contain
-        # significant variance; this makes the percentile
-        # based low and high estimates more reliable
+        # by default, we use only regions that contain significant variance; this makes the
+        # percentile-based low and high estimates more reliable
         e = escale
         v = est - filters.gaussian_filter(est, e*20.0)
         v = filters.gaussian_filter(v**2, e*20.0)**0.5
-        v = (v > 0.3*np.amax(v))
+        v = v > 0.3*np.amax(v)
         v = morphology.binary_dilation(v, structure=np.ones((int(e*50), 1)))
         v = morphology.binary_dilation(v, structure=np.ones((1, int(e*50))))
         est = est[v]
-    lo = stats.scoreatpercentile(est.ravel(), lo)
-    hi = stats.scoreatpercentile(est.ravel(), hi)
-    return lo, hi
+
+    lo1 = stats.scoreatpercentile(est.ravel(), lo)
+    hi1 = stats.scoreatpercentile(est.ravel(), hi)
+    lo2 = np.percentile(est.ravel(), lo)
+    hi2 = np.percentile(est.ravel(), hi)
+    print(" lo=%g  hi=%g" % (lo, hi))
+    print("lo1=%g hi1=%g" % (lo1, hi1))
+    print("lo2=%g hi2=%g" % (lo2, hi2))
+    assert lo1 == lo2 and hi1 == hi2
+    return lo1, hi1
 
 
 zoom = 0.5
@@ -147,7 +152,7 @@ def binarize(inFile):
         return
 
     # check whether the image is already effectively binarized
-    extreme = (np.sum(image < 0.05)+np.sum(image > 0.95)) * 1.0 / np.prod(image.shape)
+    extreme = (np.sum(image < 0.05) + np.sum(image > 0.95)) / np.prod(image.shape)
     if extreme > 0.95:
         comment = "no-normalization"
         flat = image
@@ -165,6 +170,8 @@ def binarize(inFile):
     # estimate low and high thresholds
     print("estimating thresholds")
     lo, hi = estimate_thresholds(flat, bignore, escale, defLo, defHi)
+    print("lo=%5.3f (%g)" % (lo, defLo))
+    print("hi=%5.3f (%g)" % (hi, defHi))
 
     # rescale the image to get the gray scale image
     print("rescaling")
