@@ -357,8 +357,8 @@ class RegionExtractor:
             ndim==3, dtype=='B'.  This picks a subset of the segmentation to iterate
             over, using a mask and lo and hi values.
         """
-        print("$$ setImageMasked: image=%s mask=%s lo=%s hi=%s" % (
-            desc(image), hexs(mask), hexs(lo), hexs(hi)))
+        # print("$$ setImageMasked: image=%s mask=%s lo=%s hi=%s" % (
+        #     desc(image), hexs(mask), hexs(lo), hexs(hi)))
         assert image.dtype==dtype('B') or image.dtype==dtype('i'),"image must be type B or i"
         if image.ndim==3:
             image = rgb2int(image)
@@ -377,7 +377,7 @@ class RegionExtractor:
         self.labels = labels
         self.correspondence = correspondence
         self.objects = [None]+morph.find_objects(labels)
-        print("$$ setImageMasked: objects=%d" % len(self.objects))
+        # print("$$ setImageMasked: objects=%d" % len(self.objects))
         sizes = [o for o in self.objects]
         sizes.sort(key=lambda u: -sliceSize(u))
         for i, o in enumerate(sizes[:20]):
