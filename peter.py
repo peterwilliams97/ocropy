@@ -4,10 +4,7 @@ from PIL import Image, ImageDraw
 import random as pyrandom
 import sys
 import os.path
-import re
-import glob
-import argparse
-import codecs
+import shutil
 
 import numpy as np
 # from matplotlib.pyplot import imread
@@ -50,16 +47,30 @@ pad = 3 # padding for extracted line
 expand = 3 # expand mask for grayscale extraction
 gray = False # output grayscale lines as well which are extracted from the grayscale version of the pages
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", default="", help="input file")
-    # parser.add_argument("-b", "--bin", default="", help="bin file")
 
-    args = parser.parse_args()
-    inFile = args.input
-    # binFile = args.bin
+def main():
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("-i", "--input", default="", help="input file")
+    # # parser.add_argument("-b", "--bin", default="", help="bin file")
+
+    # args = parser.parse_args()
+    # inFile = args.input
+    for i, inFile in enumerate(sys.argv[1:]):
+        processFile(inFile, i + 1)
+
+
+outRoot = "output"
+
+def processFile(origFile, fileNum):
+    baseName = os.path.basename(origFile)
+    baseBase, _ = os.path.splitext(baseName)
+    outDir = os.path.join(outRoot, "%s.%03d" % (baseBase, fileNum))
+    inFile = os.path.join(outDir, baseName)
+
+    os.makedirs(outDir, exist_ok=True)
+    shutil.copy(origFile, inFile)
+
     inBase, _ = ocrolib.allsplitext(inFile)
-    # binBase, _ = ocrolib.allsplitext(binFile)
     print("**  inBase=%s" % inBase)
     # print("** binBase=%s" % binBase)
 
@@ -67,6 +78,7 @@ def main():
     outputdir = inBase
     binFile = inBase + ".bin.png"
     outFile = inBase + ".out.png"
+    outFile2 = os.path.join(outRoot, "%s.out.png" % baseBase)
     grayFile = inBase + ".nrm.png"
     psegFile = inBase + ".pseg.png"
     print("  inFile=%s" % inFile)
@@ -149,14 +161,7 @@ def main():
         #     ocrolib.write_image_gray("%s/01%04x.nrm.png" % (outputdir, i+1), grayline)
     print("%6d  %s %4.1f %d" % (i, fname,  scale,  len(lines)))
 
-
-    # @@2
-
-
-
-
     # to proceed, we need a pseg file and a subdirectory containing text lines
-
     assert os.path.exists(psegFile), "%s: no such file" % psegFile
     assert os.path.isdir(inBase), "%s: no such directory" % inBase
 
@@ -190,6 +195,7 @@ def main():
 
     # write to stdout
     im.save(outFile, "PNG")
+    im.save(outFile2, "PNG")
 
 
 def compute_segmentation(binary, scale):
