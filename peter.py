@@ -5,8 +5,11 @@ import random as pyrandom
 import sys
 import os.path
 import shutil
-
+import re
+import subprocess
 import numpy as np
+from glob import glob
+import argparse
 # from matplotlib.pyplot import imread
 from scipy.ndimage import filters, interpolation, morphology, measurements
 # from scipy.ndimage.filters import gaussian_filter, uniform_filter, maximum_filter
@@ -49,19 +52,107 @@ gray = False # output grayscale lines as well which are extracted from the grays
 
 
 def main():
-    # parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--start", default=-1, type=int,
+                        help="first page in PDF")
+    parser.add_argument("-e", "--end", default=-1, type=int,
+                        help="last page in PDF")
+    parser.add_argument("files", nargs="+",
+                        help="input files; glob and @ expansion performed")
     # parser.add_argument("-i", "--input", default="", help="input file")
     # # parser.add_argument("-b", "--bin", default="", help="bin file")
 
-    # args = parser.parse_args()
+    args = parser.parse_args()
     # inFile = args.input
-    for i, inFile in enumerate(sys.argv[1:]):
-        processFile(inFile, i + 1)
+    os.makedirs(outPdfRoot, exist_ok=True)
+    pdfFiles = args.files
+    pdfFiles.sort(key=lambda k: (os.path.getsize(k), k))
+    for i, inFile in enumerate(pdfFiles):
+        print("-" * 80)
+        processPdfFile(inFile, args.start, args.end)
+        print("Processed %d of %d: %s" % (i + 1, len(pdfFiles), inFile))
+    print("Processed %d files %s" % (len(pdfFiles), pdfFiles))
 
 
-outRoot = "output"
+outPdfRoot = "pdf.output"
 
-def processFile(origFile, fileNum):
+
+def processPdfFile(pdfFile, start, end):
+    baseName = os.path.basename(pdfFile)
+    baseBase, _ = os.path.splitext(baseName)
+    outPdfFile = os.path.join(outPdfRoot, baseName)
+    outRoot = os.path.join(outPdfRoot, baseBase)
+    shutil.copyfile(pdfFile, outPdfFile)
+    os.makedirs(outRoot, exist_ok=True)
+    retval = runGhostscript(outPdfFile, outRoot)
+    assert retval == 0
+    fileList = glob(os.path.join(outRoot, "doc-*.png"))
+    fileList.sort()
+
+    print("fileList=%d %s" % (len(fileList), fileList))
+    for fileNum, origFile in enumerate(fileList):
+        page, ok = pageNum(origFile)
+        print("#### page=%s ok=%s" % (page, ok))
+        if ok:
+            if start >= 0 and page < start:
+                print("@1", start, end)
+                continue
+            if end >= 0 and page > end:
+                print("@2", start, end)
+                continue
+        print("@31", start, end)
+        processPngFile(outRoot, origFile, fileNum)
+
+
+gsImageFormat = "doc-%03d.png"
+gsImagePattern = r"^doc\-(\d+).png$"
+gsImageRegex = re.compile(gsImagePattern)
+
+
+def pageNum(pngPath):
+    name = os.path.basename(pngPath)
+    m = gsImageRegex.search(name)
+    print("pageNum:", pngPath,name, m)
+    if m is None:
+        return 0, False
+    return int(m.group(1)), True
+
+
+def runGhostscript(pdf, outputDir):
+    """runGhostscript runs Ghostscript on file `pdf` to create file one png file per page in
+        directory `outputDir`.
+    """
+    print("runGhostscript: pdf=%s outputDir=%s" % (pdf, outputDir))
+    outputPath = os.path.join(outputDir, gsImageFormat)
+    output = "-sOutputFile=%s" % outputPath
+    cmd = ["gs",
+           "-dSAFER",
+           "-dBATCH",
+           "-dNOPAUSE",
+           "-r300",
+           "-sDEVICE=png16m",
+           "-dTextAlphaBits=1",
+           "-dGraphicsAlphaBits=1",
+           output,
+           pdf]
+
+    print("runGhostscript: cmd=%s" % cmd)
+    print("%s" % ' '.join(cmd))
+    os.makedirs(outputDir, exist_ok=True)
+    # p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen(cmd, shell=False)
+
+    retval = p.wait()
+    print("retval=%d" % retval)
+    print("%s" % ' '.join(cmd))
+    print(" outputDir=%s" % outputDir)
+    print("outputPath=%s" % outputPath)
+    assert os.path.exists(outputDir)
+
+    return retval
+
+
+def processPngFile(outRoot, origFile, fileNum):
     baseName = os.path.basename(origFile)
     baseBase, _ = os.path.splitext(baseName)
     outDir = os.path.join(outRoot, "%s.%03d" % (baseBase, fileNum))
@@ -78,7 +169,10 @@ def processFile(origFile, fileNum):
     outputdir = inBase
     binFile = inBase + ".bin.png"
     outFile = inBase + ".out.png"
-    outFile2 = os.path.join(outRoot, "%s.out.png" % baseBase)
+    outRoot2, outDir2 = os.path.split(outRoot)
+    outFile2 = os.path.join(outRoot2, "%s.out" % outDir2, baseName)
+    print("outFile2=%s" % outFile2)
+    # assert False
     grayFile = inBase + ".nrm.png"
     psegFile = inBase + ".pseg.png"
     print("  inFile=%s" % inFile)
@@ -89,7 +183,9 @@ def processFile(origFile, fileNum):
     assert outFile != inFile
     assert outFile != binFile
 
-    binarize(inFile, binFile, grayFile)
+    if not binarize(inFile, binFile, grayFile):
+        print("Couldn't binarize %s" % inFile)
+        return False
 
     image = ocrolib.read_image_binary(binFile)
     print("$$ %s=%s" % (binFile, desc(image)))
@@ -118,7 +214,7 @@ def processFile(origFile, fileNum):
     scale = psegutils.estimate_scale(binary)
     print("scale %f" % scale)
     if np.isnan(scale) or scale > 1000.0:
-        print_("%s: bad scale (%g); skipping\n" % (fname, scale))
+        print("%s: bad scale (%g); skipping\n" % (fname, scale))
         return
 
     # find columns and text lines
@@ -195,7 +291,11 @@ def processFile(origFile, fileNum):
 
     # write to stdout
     im.save(outFile, "PNG")
+    print("outFile2=%s" % outFile2)
+    outDir2 = os.path.dirname(outFile2)
+    os.makedirs(outDir2, exist_ok=True)
     im.save(outFile2, "PNG")
+    assert os.path.exists(outFile2)
 
 
 def compute_segmentation(binary, scale):
@@ -387,7 +487,7 @@ def normalize_raw_image(raw):
     """ perform image normalization """
     image = raw - np.amin(raw)
     if np.amax(image) == np.amin(image):
-        print("# image is empty: %s" % (fname))
+        # print("# image is empty: %s" % (fname))
         return None
     image /= np.amax(image)
     return image
@@ -467,15 +567,18 @@ threshold = 0.5
 
 def binarize(inFile, binFile, grayFile):
     fname = inFile
-    raw = ocrolib.read_image_gray(fname)
+    raw = ocrolib.read_image_gray(inFile)
 
     # perform image normalization
     image = normalize_raw_image(raw)
+    if image is None:
+       print("  # image is empty: %s" % (inFile))
+       return False
 
     check = check_page(np.amax(image)-image)
     if check is not None:
         print(fname+"SKIPPED"+check+"(use -n to disable this check)")
-        return
+        return False
 
     # check whether the image is already effectively binarized
     extreme = (np.sum(image < 0.05) + np.sum(image > 0.95)) / np.prod(image.shape)
@@ -512,6 +615,8 @@ def binarize(inFile, binFile, grayFile):
 
     ocrolib.write_image_binary(binFile, bin)
     ocrolib.write_image_gray(grayFile, flat)
+    return True
+
 
 debug = False
 
@@ -524,5 +629,6 @@ def DSAVE(title, image):
     fname = "_%s.png" % title
     print("debug " + fname)
     imsave(fname, image.astype('float'))
+
 
 main()
