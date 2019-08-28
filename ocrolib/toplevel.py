@@ -9,7 +9,7 @@ import numpy as np
 
 ### printing
 
-def strc(arg,n=10):
+def strc(arg, n=10):
     """Compact version of `str`."""
     if isinstance(arg,float):
         return "%.3g"%arg
@@ -149,6 +149,7 @@ class CheckWarning(CheckError):
         result += self.description
         result += "(This can happen occasionally during normal operations and isn't necessarily a bug or problem.)\n"
         return result
+
 
 def checktype(value,type_):
     """Check value against the type spec.  If everything
@@ -461,3 +462,52 @@ def DATASET(size0=3,size1=int(1e9),vsize0=2,vsize1=100000,vrank=-1,vrange0=-300,
                DATASET_VRANK(vrank),
                DATASET_VSIZE(vsize0,vsize1),
                DATASET_VRANGE(vrange0,vrange1))
+
+
+def desc(a):
+    r = a.ravel()
+    tr = [0.0, 0.1, 1.0, 10.0, 25.0]
+    tr = tr + [50.0] + [100.0 - t for t in reversed(tr)]
+    percentiles = [(t, np.percentile(r, t)) for t in tr]
+    percentiles = [(t, int(round(r*1e5))/1e5) for t, r in percentiles]
+
+    med = np.median(r)
+    s = "%s:%s min=%.3f median=%g=%e mean=%3f max=%.3f\n    %s" % (
+        list(a.shape), a.dtype,
+        np.min(r), med, med, np.mean(r), np.max(r),
+        percentiles)
+
+    d = np.percentile(r, 50.0) - med
+    assert abs(d) <= 1.e-5, "d=%g s=%s" % (d, s)
+    return s
+
+
+if False:
+    medians = []
+    for i in reversed(range(-100, 101)):
+        a = np.eye((3 + i % 3))
+
+        if i % 13 != 2:
+            a[1, 1] = i**2
+            a[2, 2] = i**4
+            a[0, 1] = i**5
+            a[1, 0] = i**3
+        if i % 3 == 1:
+            a = -a
+        a[0, 0] = i
+        if i % 3 != 0:
+            a[0, 2] = 1
+        if i % 5 != 2:
+            a[2, 0] = -2
+        if i % 5 == 1:
+            a = -a
+        if i % 7 != 2:
+            a[1, 2] = -3
+        if i % 11 != 6:
+            a[2, 1] = 3
+        print("a=%s" % desc(a))
+        medians.append((np.median(a.ravel()), i))
+    medians.sort()
+    print(medians[:10])
+    print(medians[-10:])
+    assert False

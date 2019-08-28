@@ -41,9 +41,6 @@ For each page like 'book/0001.bin.png', it uses the following files:
     ./ocropus-gpageseg 'book/????.bin.png'
 """
 
-desc = common.desc
-
-
 maxlines = 300
 noise = 8 # "noise threshold for removing small components from lines
 pad = 3 # padding for extracted line
@@ -57,51 +54,74 @@ def main():
                         help="first page in PDF")
     parser.add_argument("-e", "--end", default=-1, type=int,
                         help="last page in PDF")
+    parser.add_argument("-n", "--needed", default=1, type=int,
+                        help="min number of pages required")
     parser.add_argument("files", nargs="+",
                         help="input files; glob and @ expansion performed")
-    # parser.add_argument("-i", "--input", default="", help="input file")
-    # # parser.add_argument("-b", "--bin", default="", help="bin file")
+    parser.add_argument("-f", "--force", action="store_true",
+                        help="force processing of PDF file")
 
     args = parser.parse_args()
     # inFile = args.input
     os.makedirs(outPdfRoot, exist_ok=True)
     pdfFiles = args.files
     pdfFiles.sort(key=lambda k: (os.path.getsize(k), k))
+    processedFiles = []
     for i, inFile in enumerate(pdfFiles):
         print("-" * 80)
-        processPdfFile(inFile, args.start, args.end)
-        print("Processed %d of %d: %s" % (i + 1, len(pdfFiles), inFile))
-    print("Processed %d files %s" % (len(pdfFiles), pdfFiles))
+        if not processPdfFile(inFile, args.start, args.end, args.needed, args.force):
+            continue
+        processedFiles.append(inFile)
+        print("Processed %d (%d of %d): %s" % (len(processedFiles), i + 1, len(pdfFiles), inFile))
+    print("=" * 80)
+    print("Processed %d files %s" % (len(processedFiles), processedFiles))
 
 
 outPdfRoot = "pdf.output"
 
 
-def processPdfFile(pdfFile, start, end):
+def processPdfFile(pdfFile, start, end, needed, force):
+    assert needed >= 0, needed
     baseName = os.path.basename(pdfFile)
     baseBase, _ = os.path.splitext(baseName)
     outPdfFile = os.path.join(outPdfRoot, baseName)
     outRoot = os.path.join(outPdfRoot, baseBase)
-    shutil.copyfile(pdfFile, outPdfFile)
+
+    if not force and os.path.exists(outPdfFile):
+        print("%s exists. skipping" % outPdfFile)
+        return False
+
     os.makedirs(outRoot, exist_ok=True)
-    retval = runGhostscript(outPdfFile, outRoot)
+    retval = runGhostscript(pdfFile, outRoot)
     assert retval == 0
     fileList = glob(os.path.join(outRoot, "doc-*.png"))
     fileList.sort()
 
     print("fileList=%d %s" % (len(fileList), fileList))
+    numPages = 0
     for fileNum, origFile in enumerate(fileList):
         page, ok = pageNum(origFile)
         print("#### page=%s ok=%s" % (page, ok))
         if ok:
             if start >= 0 and page < start:
-                print("@1", start, end)
+                print("@1", [start, end])
                 continue
             if end >= 0 and page > end:
-                print("@2", start, end)
-                continue
+                if not (needed >= 0 and numPages < needed):
+                    print("@2", [start, end], [numPages, needed])
+                    continue
         print("@31", start, end)
-        processPngFile(outRoot, origFile, fileNum)
+        ok = processPngFile(outRoot, origFile, fileNum)
+        if ok:
+            numPages += 1
+    assert numPages > 0
+
+    if numPages == 0:
+        print("~~ No pages processed")
+        return False
+
+    shutil.copyfile(pdfFile, outPdfFile)
+    return True
 
 
 gsImageFormat = "doc-%03d.png"
@@ -184,21 +204,18 @@ def processPngFile(outRoot, origFile, fileNum):
     assert outFile != binFile
 
     if not binarize(inFile, binFile, grayFile):
-        print("Couldn't binarize %s" % inFile)
+        binExists = os.path.exists(binFile)
+        print("Couldn't binarize inFile=%s binFile=%s exists=%s" % (inFile, binFile, binExists))
         return False
 
-    image = ocrolib.read_image_binary(binFile)
-    print("$$ %s=%s" % (binFile, desc(image)))
-    height, width = image.shape
-    binary = image
-
-    # @@1
-
+    binary = ocrolib.read_image_binary(binFile)
+    print("$$ %s=%s" % (binFile, desc(binary)))
+    height, width = binary.shape
     checktype(binary, ABINARY2)
     check = check_page(np.amax(binary) - binary)
     if check is not None:
-        print("%s SKIPPED %s (use -n to disable this check)" %(fname, check))
-        return
+        print("%s SKIPPED %s (use -n to disable this check)" % (inFile, check))
+        return False
 
     # if args.gray:
     #     if os.path.exists(base+".nrm.png"):
@@ -215,15 +232,16 @@ def processPngFile(outRoot, origFile, fileNum):
     print("scale %f" % scale)
     if np.isnan(scale) or scale > 1000.0:
         print("%s: bad scale (%g); skipping\n" % (fname, scale))
-        return
+        return False
 
     # find columns and text lines
     print("computing segmentation")
     segmentation = compute_segmentation(binary, scale)
     if np.amax(segmentation) > maxlines:
         print("%s: too many lines %g" % (fname, np.amax(segmentation)))
-        return
+        return False
 
+    print("segmentation=%s" % desc(segmentation))
     print("number of lines %g" % np.amax(segmentation))
 
     # compute the reading order
@@ -231,10 +249,9 @@ def processPngFile(outRoot, origFile, fileNum):
     lines = psegutils.compute_lines(segmentation, scale)
     order = psegutils.reading_order([l.bounds for l in lines])
     lsort = psegutils.topsort(order)
-    print("$$ lsort = %d = %s" % (len(lsort), lsort[:10]))
+    print("$$ lsort = %d = %s...%s" % (len(lsort), lsort[:10], lsort[-10:]))
 
     # renumber the labels so that they conform to the specs
-
     nlabels = np.amax(segmentation) + 1
     renumber = np.zeros(nlabels, 'i')
     for i, v in enumerate(lsort):
@@ -296,6 +313,7 @@ def processPngFile(outRoot, origFile, fileNum):
     os.makedirs(outDir2, exist_ok=True)
     im.save(outFile2, "PNG")
     assert os.path.exists(outFile2)
+    return True
 
 
 def compute_segmentation(binary, scale):
@@ -317,12 +335,13 @@ def compute_segmentation(binary, scale):
     print("computing lines")
     bottom, top, boxmap = compute_gradmaps(binary, scale)
     seeds = compute_line_seeds(binary, bottom, top, colseps, scale)
+    print("seeds=%s" % desc(seeds))
     DSAVE("seeds", [bottom, top, boxmap])
 
     # spread the text line seeds to all the remaining components
     print("propagating labels")
     llabels = morph.propagate_labels(boxmap, seeds, conflict=0)
-    print("spreading labels")
+    print("spreading labels: llabels=%s" % desc(llabels))
     spread = morph.spread_labels(seeds, maxdist=scale)
     llabels = np.where(llabels > 0, llabels, spread*binary)
     segmentation = llabels * binary
@@ -340,9 +359,10 @@ def compute_segmentation(binary, scale):
 ################################################################
 
 def compute_gradmaps(binary, scale, hscale=1.0, vscale=1.0, usegauss=False):
-    """ usegauss: use gaussian instead of uniform"""
+    """usegauss: use gaussian instead of uniform"""
     # use gradient filtering to find baselines
     boxmap = psegutils.compute_boxmap(binary, scale)
+    DSAVE("boxmap", boxmap)
     cleaned = boxmap * binary
     DSAVE("cleaned", cleaned)
     if usegauss:
@@ -350,23 +370,23 @@ def compute_gradmaps(binary, scale, hscale=1.0, vscale=1.0, usegauss=False):
         grad = filters.gaussian_filter(1.0*cleaned, (vscale*0.3*scale, hscale*6*scale), order=(1, 0))
     else:
         # this uses non-Gaussian oriented filters
-        grad = filters.gaussian_filter(1.0*cleaned, (max(4, vscale*0.3*scale),
-                                             hscale*scale), order=(1, 0))
+        grad = filters.gaussian_filter(1.0*cleaned,
+                         (max(4, vscale*0.3*scale), hscale*scale),
+                         order=(1, 0))
         grad = filters.uniform_filter(grad, (vscale, hscale*6*scale))
     bottom = ocrolib.norm_max((grad < 0)*(-grad))
     top = ocrolib.norm_max((grad > 0)*grad)
     return bottom, top, boxmap
 
 
-def compute_line_seeds(binary, bottom, top, colseps, scale,
-                       threshold=0.2, vscale=1.0,):
-    """Base on gradient maps, computes candidates for baselines and xheights.  Then, it marks the
+def compute_line_seeds(binary, bottom, top, colseps, scale, threshold=0.2, vscale=1.0):
+    """Based on gradient maps, computes candidates for baselines and xheights.  Then, it marks the
        regions between the two as a line seed.
     """
     t = threshold
     vrange = int(vscale*scale)
-    bmarked = filters.maximum_filter( bottom == filters.maximum_filter(bottom, (vrange, 0)), (2, 2))
-    bmarked = bmarked*(bottom > t*np.amax(bottom)*t)*(1-colseps)
+    bmarked = filters.maximum_filter(bottom == filters.maximum_filter(bottom, (vrange, 0)), (2, 2))
+    bmarked = bmarked * (bottom > t*np.amax(bottom)*t) * (1-colseps)
     tmarked = filters.maximum_filter(top == filters.maximum_filter(top, (vrange, 0)), (2, 2))
     tmarked = tmarked*(top > t*np.amax(top)*t/2)*(1-colseps)
     tmarked = filters.maximum_filter(tmarked, (1, 20))
@@ -403,28 +423,25 @@ def remove_hlines(binary, scale, maxsize=10):
 
 
 def find(condition):
-    "Return the indices where ravel(condition) is true"
+    """Return the indices where ravel(condition) is true"""
     res, = np.nonzero(np.ravel(condition))
     return res
 
-
-def desc(a):
-    return "%s:%s" % (list(a.shape), a.dtype)
 
 def check_page(image):
     if len(image.shape) == 3:
         return "input image is color image %s" % (image.shape,)
     if np.mean(image) < np.median(image):
-        return "image may be inverted"
+        return "image may be inverted %s" % desc(image)
     h, w = image.shape
     if h < 600:
-        return "image not tall enough for a page image %s" % (image.shape,)
+        return "image not tall enough for a page image %s" % list(image.shape)
     if h > 10000:
-        return "image too tall for a page image %s" % (image.shape,)
+        return "image too tall for a page image %s" % list(image.shape)
     if w < 600:
-        return "image too narrow for a page image %s" % (image.shape,)
+        return "image too narrow for a page image %s" % list(image.shape)
     if w > 10000:
-        return "line too wide for a page image %s" % (image.shape,)
+        return "line too wide for a page image %s" % list(image.shape)
     return None
 
 
@@ -444,19 +461,20 @@ def compute_colseps(binary, scale, maxcolseps=3, maxseps=0):
     return colseps, binary
 
 
-def compute_colseps_conv(binary, scale=1.0,
-                         csminheight=10, # minimum column height (units=scale)
-                         maxcolseps=3,  # maximum # whitespace column separators
-     ):
-    """Find column separators by convolution and thresholding."""
+def compute_colseps_conv(binary, scale=1.0, csminheight=10, maxcolseps=3):
+    """Find column separators by convolution and thresholding.
+        csminheight: minimum column height (units=scale)
+        maxcolseps: maximum # whitespace column separators
+    """
     h, w = binary.shape
     # find vertical whitespace by thresholding
-    smoothed = filters.gaussian_filter(1.0*binary, (scale, scale*0.5))
-    smoothed = filters.uniform_filter(smoothed, (5.0*scale, 1))
-    thresh = (smoothed < np.amax(smoothed)*0.1)
+    assert np.array_equal(binary, 1.0*binary)
+    smoothed = filters.gaussian_filter(binary, sigma=(scale, scale*0.5))
+    smoothed = filters.uniform_filter(smoothed, size=(5.0*scale, 1))
+    thresh = smoothed < np.amax(smoothed)*0.1
     DSAVE("1thresh", thresh)
     # find column edges by filtering
-    grad = filters.gaussian_filter(1.0*binary, (scale, scale*0.5), order=(0, 1))
+    grad = filters.gaussian_filter(binary, (scale, scale*0.5), order=(0, 1))
     grad = filters.uniform_filter(grad, (10.0*scale, 1))
     # grad = abs(grad) # use this for finding both edges
     grad = (grad > 0.5*np.amax(grad))
@@ -494,8 +512,8 @@ def normalize_raw_image(raw):
 
 
 def estimate_local_whitelevel(image, zoom=0.5, perc=80, size=20):
-    """flatten it by estimating the local whitelevel
-        zoom for page background estimation,smaller=faster
+    """flatten image by estimating the local whitelevel
+        zoom for page background estimation, smaller=faster
         percentage for filters
         size for filters
     """
@@ -545,15 +563,15 @@ def estimate_thresholds(flat, bignore=0.1, escale=1.0, lo=5, hi=90):
         v = morphology.binary_dilation(v, structure=np.ones((1, int(e*50))))
         est = est[v]
 
-    lo1 = stats.scoreatpercentile(est.ravel(), lo)
-    hi1 = stats.scoreatpercentile(est.ravel(), hi)
-    lo2 = np.percentile(est.ravel(), lo)
-    hi2 = np.percentile(est.ravel(), hi)
     print(" lo=%g  hi=%g" % (lo, hi))
-    print("lo1=%g hi1=%g" % (lo1, hi1))
+    try:
+        lo2 = np.percentile(est.ravel(), lo)
+        hi2 = np.percentile(est.ravel(), hi)
+    except IndexError as e:
+        print("error=%s" % e)
+        return 0, 0, False
     print("lo2=%g hi2=%g" % (lo2, hi2))
-    assert lo1 == lo2 and hi1 == hi2
-    return lo1, hi1
+    return lo2, hi2, True
 
 
 zoom = 0.5
@@ -566,18 +584,21 @@ defHi = 90
 threshold = 0.5
 
 def binarize(inFile, binFile, grayFile):
+    print("binarize: inFile=%s binFile=%s grayFile=%s" %(inFile, binFile, grayFile))
     fname = inFile
     raw = ocrolib.read_image_gray(inFile)
 
     # perform image normalization
     image = normalize_raw_image(raw)
     if image is None:
-       print("  # image is empty: %s" % (inFile))
+       print("!!  # image is empty: %s" % (inFile))
+       assert False
        return False
 
-    check = check_page(np.amax(image)-image)
+    check = check_page(np.amax(image) - image)
     if check is not None:
-        print(fname+"SKIPPED"+check+"(use -n to disable this check)")
+        print(inFile+" SKIPPED "+check+"(use -n to disable this check)")
+        # assert False
         return False
 
     # check whether the image is already effectively binarized
@@ -591,6 +612,11 @@ def binarize(inFile, binFile, grayFile):
         print("flattening")
         flat = estimate_local_whitelevel(image, zoom, perc, size)
 
+    print("comment=%r extreme=%s" % (comment, extreme))
+    print("image=%s" % desc(image))
+    print(" flat=%s" % desc(flat))
+    # assert False
+
     # estimate skew angle and rotate
     # print("estimating skew angle")
     # flat, angle = estimate_skew(flat, args.bignore, args.maxskew, args.skewsteps)
@@ -598,7 +624,9 @@ def binarize(inFile, binFile, grayFile):
 
     # estimate low and high thresholds
     print("estimating thresholds")
-    lo, hi = estimate_thresholds(flat, bignore, escale, defLo, defHi)
+    lo, hi, ok = estimate_thresholds(flat, bignore, escale, defLo, defHi)
+    if not ok:
+        return False
     print("lo=%5.3f (%g)" % (lo, defLo))
     print("hi=%5.3f (%g)" % (hi, defHi))
 
@@ -607,14 +635,17 @@ def binarize(inFile, binFile, grayFile):
     flat -= lo
     flat /= (hi-lo)
     flat = np.clip(flat, 0, 1)
-    bin = 1 * (flat > threshold)
+    bin = flat > threshold
 
     # output the normalized grayscale and the thresholded images
     print("%s lo-hi (%.2f %.2f) angle %4.1f %s" % (fname, lo, hi, angle, comment))
-    print("writing")
+    print("##1 flat=%s" % desc(flat))
+    print("##2  bin=%s" % desc(bin))
+    print("writing %s" % binFile)
 
     ocrolib.write_image_binary(binFile, bin)
     ocrolib.write_image_gray(grayFile, flat)
+
     return True
 
 

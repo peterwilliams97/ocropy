@@ -88,7 +88,7 @@ def check_line(image):
     if w<1.5*h: return "line too short %s"%(image.shape,)
     if w>4000: return "line too long %s"%(image.shape,)
     ratio = w*1.0/h
-    _,ncomps = measurements.label(image>np.mean(image))
+    _, ncomps = measurements.label(image>np.mean(image))
     lo = int(0.5*ratio+0.5)
     hi = int(4*ratio)+1
     if ncomps<lo: return "too few connected components (got %d, wanted >=%d)"%(ncomps,lo)
@@ -120,7 +120,7 @@ try:
     network = ocrolib.load_object(args.model, verbose=1)
     for x in network.walk(): x.postLoad()
     for x in network.walk():
-        if isinstance(x,lstm.LSTM):
+        if isinstance(x, lstm.LSTM):
             x.allocate(5000)
 except FileNotFound:
     print_error("")

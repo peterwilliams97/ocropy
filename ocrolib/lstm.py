@@ -43,8 +43,7 @@ class RangeError(Exception):
         Exception.__init__(self,s)
 
 def prepare_line(line, pad=16):
-    """Prepare a line for recognition; this inverts it, transposes
-    it, and pads it."""
+    """Prepare a line for recognition; this inverts it, transposes it, and pads it."""
     line = line * 1.0 / np.amax(line)
     line = np.amax(line)-line
     line = line.T
@@ -135,24 +134,23 @@ class Network:
         pass
 
     def ctrain(self,xs,cs,debug=0,lo=1e-5,accelerated=1):
-        """Training for classification.  This handles
-        the special case of just two classes. It also
-        can use regular least square error training or
-        accelerated training using 1/pred as the error signal."""
+        """Training for classification.  This handles the special case of just two classes. It also
+            can use regular least square error training or accelerated training using 1/pred as the
+            error signal.
+        """
         assert len(cs.shape)==1
         assert (cs==np.array(cs,'i')).all()
         xs = np.array(xs)
         pred = np.array(self.forward(xs))
         deltas = np.zeros(pred.shape)
         assert len(deltas)==len(cs)
-        # NB: these deltas are such that they can be used
-        # directly to update the gradient; some other libraries
-        # use the negative value.
+        # NB: these deltas are such that they can be used directly to update the gradient; some
+        # other libraries use the negative value.
         if accelerated:
             # ATTENTION: These deltas use an "accelerated" error signal.
             if deltas.shape[1]==1:
                 # Binary class case uses just one output variable.
-                for i,c in enumerate(cs):
+                for i, c in enumerate(cs):
                     if c==0:
                         deltas[i,0] = -1.0/max(lo,1.0-pred[i,0])
                     else:
@@ -160,12 +158,11 @@ class Network:
             else:
                 # For the multi-class case, we use all output variables.
                 deltas[:,:] = -pred[:,:]
-                for i,c in enumerate(cs):
+                for i, c in enumerate(cs):
                     deltas[i,c] = 1.0/max(lo,pred[i,c])
         else:
-            # These are the deltas from least-square error
-            # updates. They are slower than `accelerated`,
-            # but may give more accurate probability estimates.
+            # These are the deltas from least-square error updates. They are slower than
+            # `accelerated`, but may give more accurate probability estimates.
             if deltas.shape[1]==1:
                 # Binary class case uses just one output variable.
                 for i,c in enumerate(cs):
@@ -188,7 +185,7 @@ class Network:
         self.momentum = momentum
 
     def weights(self):
-        """Return an iterator that iterates over (W,DW,name) triples
+        """Return an iterator that iterates over (W, DW, name) triples
         representing the weight matrix, the computed deltas, and the names
         of all the components of this network. This needs to be implemented
         in subclasses. The objects returned by the iterator must not be copies,
@@ -196,8 +193,8 @@ class Network:
         pass
 
     def allweights(self):
-        """Return all weights as a single vector. This is mainly a convenience
-        function for plotting."""
+        """Return all weights as a single vector. This is mainly a convenience function for plotting.
+        """
         aw = list(self.weights())
         weights,derivs,names = zip(*aw)
         weights = [w.ravel() for w in weights]
@@ -719,12 +716,11 @@ def BIDILSTM(Ni,Ns,No):
 ################################################################
 
 def make_target(cs,nc):
-    """Given a list of target classes `cs` and a total
-    maximum number of classes, compute an array that has
-    a `1` in each column and time step corresponding to the
-    target class."""
+    """Given a list of target classes `cs` and a total maximum number of classes, compute an array
+        that has a `1` in each column and time step corresponding to the target class.
+    """
     result = np.zeros((2*len(cs)+1,nc))
-    for i,j in enumerate(cs):
+    for i, j in enumerate(cs):
         result[2*i,0] = 1.0
         result[2*i+1,j] = 1.0
     result[-1,0] = 1.0
@@ -844,7 +840,7 @@ def ctc_align_targets(outputs,targets,threshold=100.0,verbose=0,debug=0,lo=1e-5)
     return aligned
 
 def normalize_nfkc(s):
-    return unicodedata.normalize('NFKC',s)
+    return unicodedata.normalize('NFKC', s)
 
 def add_training_info(network):
     return network

@@ -17,15 +17,14 @@ import gzip
 from ocrolib.exceptions import (BadClassLabel, BadInput, FileNotFound, OcropusException)
 
 import numpy
-from numpy import (amax, amin, array, bitwise_and, clip, dtype, mean, minimum,
-                   nan, sin, sqrt, zeros)
+from numpy import amax, amin, array, bitwise_and, clip, dtype, mean, minimum, nan, sin, sqrt, zeros
 import pylab
 from pylab import clf, cm, ginput, gray, imshow, ion, subplot, where
 from scipy.ndimage import morphology, measurements
 import PIL
 
 from default import getlocal
-from toplevel import (checks, ABINARY2, AINT2, AINT3, BOOL, DARKSEG, GRAYSCALE,
+from toplevel import (checks, desc, ABINARY2, AINT2, AINT3, BOOL, DARKSEG, GRAYSCALE,
                       LIGHTSEG, LINESEG, PAGESEG)
 import chars
 import codecs
@@ -228,8 +227,9 @@ def rgb2int(a):
 
 @checks(AINT2,_=AINT3)
 def int2rgb(image):
-    """Converts a rank 3 array with RGB values stored in the
-    last axis into a rank 2 array containing 32 bit RGB values."""
+    """Converts a rank 3 array with RGB values stored in the last axis into a rank 2 array
+        containing 32 bit RGB values.
+    """
     assert image.ndim==2
     assert isintarray(image)
     a = zeros(list(image.shape)+[3], 'B')
@@ -247,7 +247,7 @@ def make_seg_black(image):
 
 @checks(DARKSEG,_=LIGHTSEG)
 def make_seg_white(image):
-    assert isintegerarray(image),"%s: wrong type for segmentation"%image.dtype
+    assert isintegerarray(image), "%s: wrong type for segmentation"%image.dtype
     image = image.copy()
     image[image==0] = 0xffffff
     return image
@@ -289,7 +289,7 @@ def read_page_segmentation(fname):
 
     return segmentation
 
-def write_page_segmentation(fname,image):
+def write_page_segmentation(fname, image):
     """Writes a page segmentation, that is an RGB image whose values encode the segmentation of a page.
     """
     assert image.ndim==2
@@ -298,17 +298,16 @@ def write_page_segmentation(fname,image):
     im = array2pil(a)
     im.save(fname)
 
+
 def iulib_page_iterator(files):
     for fname in files:
         image = read_image_gray(fname)
         yield image,fname
 
+
 def norm_max(a):
-    return a/amax(a)
+    return a / amax(a)
 
-
-def desc(a):
-    return "%s:%s" % (list(a.shape), a.dtype)
 
 def hexs(v):
     try:
@@ -938,18 +937,23 @@ def testset(index,sequence=0,frac=10):
     return sequence==int(abs(sin(index))*1.23456789e6)%frac
 
 def midrange(image,frac=0.5):
-    """Computes the center of the range of image values
-    (for quick thresholding)."""
+    """Computes the center of the range of image values (for quick thresholding)."""
     return frac*(amin(image)+amax(image))
+
 
 def remove_noise(line, minsize=8):
     """Remove small pixels from an image."""
-    if minsize==0: return line
+    if minsize == 0:
+        return line
     bin = (line>0.5*amax(line))
     labels, n = morph.label(bin)
-    sums = measurements.sum(bin,labels,range(n+1))
+    print("remove_noise: n=%d labels=%s" % (n, desc(labels)))
+    sums = measurements.sum(bin, labels, range(n+1))
     sums = sums[labels]
-    good = minimum(bin,1-(sums>0)*(sums<minsize))
+    print("sums=%s" % desc(sums))
+    good = minimum(bin, 1 - (sums>0)*(sums<minsize))
+    print("good=%s" % desc(good))
+    assert False
     return good
 
 class MovingStats:

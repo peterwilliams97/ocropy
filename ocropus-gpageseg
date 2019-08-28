@@ -352,10 +352,6 @@ def remove_hlines(binary, scale, maxsize=10):
     return np.array(labels!=0, 'B')
 
 
-def desc(a):
-    return "%s:%s" % (list(a.shape), a.dtype)
-
-
 def compute_segmentation(binary, scale):
     """Given a binary image, compute a complete segmentation into lines, computing both columns and
         text lines.

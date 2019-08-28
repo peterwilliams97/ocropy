@@ -1,9 +1,6 @@
 ################################################################
 ### various add-ons to the SciPy morphology package
 ################################################################
-
-from __future__ import print_function
-
 from numpy import *
 import pylab
 from pylab import *
@@ -13,12 +10,12 @@ from toplevel import *
 
 @checks(ABINARY2)
 def label(image,**kw):
-    """Redefine the scipy.ndimage.measurements.label function to
-    work with a wider range of data types.  The default function
-    is inconsistent about the data types it accepts on different
-    platforms."""
+    """Redefine the scipy.ndimage.measurements.label function to work with a wider range of data
+        types.  The default function is inconsistent about the data types it accepts on different
+        platforms.
+    """
     try:
-        return measurements.label(image,**kw)
+        return measurements.label(image, **kw)
     except:
         pass
     types = ["int32","uint32","int64","uint64","int16","uint16"]
@@ -29,6 +26,7 @@ def label(image,**kw):
             pass
     # let it raise the same exception as before
     return measurements.label(image,**kw)
+
 
 @checks(AINT2)
 def find_objects(image, **kw):
@@ -126,18 +124,26 @@ def rg_closing(image,size,origin=0):
     image = r_dilation(image,size,origin=0)
     return r_erosion(image,size,origin=0)
 
+
 @checks(SEGMENTATION)
 def showlabels(x,n=7):
     pylab.imshow(where(x>0,x%n+1,0),cmap=pylab.cm.gist_stern)
 
+
 @checks(SEGMENTATION)
-def spread_labels(labels,maxdist=9999999):
+def spread_labels(labels, maxdist=9999999):
     """Spread the given labels to the background"""
-    distances,features = morphology.distance_transform_edt(labels==0,return_distances=1,return_indices=1)
-    indexes = features[0]*labels.shape[1]+features[1]
+    print("** spread_labels: labels=%s" % desc(labels))
+    distances, features = morphology.distance_transform_edt(labels==0,
+                                return_distances=1, return_indices=1)
+    indexes = features[0]*labels.shape[1] + features[1]
+    print("indexes=%s" % desc(indexes))
     spread = labels.ravel()[indexes.ravel()].reshape(*labels.shape)
+    print("spread=%s" % desc(spread))
     spread *= (distances<maxdist)
+    print("spread=%s" % desc(spread))
     return spread
+
 
 @checks(ABINARY2,ABINARY2)
 def keep_marked(image,markers):
@@ -156,15 +162,16 @@ def remove_marked(image,markers):
     return image*(marked==0)
 
 @checks(SEGMENTATION,SEGMENTATION)
-def correspondences(labels1,labels2):
-    """Given two labeled images, compute an array giving the correspondences
-    between labels in the two images."""
+def correspondences(labels1, labels2):
+    """Given two labeled images, compute an array giving the correspondences between labels in the
+        two images.
+    """
     q = 100000
     assert amin(labels1)>=0 and amin(labels2)>=0
     assert amax(labels2)<q
-    combo = labels1*q+labels2
+    combo = labels1*q + labels2
     result = unique(combo)
-    result = array([result//q,result%q])
+    result = array([result//q, result%q])
     return result
 
 @checks(ABINARY2,SEGMENTATION)
@@ -178,26 +185,30 @@ def propagate_labels_simple(regions,labels):
     outputs[0] = 0
     return outputs[rlabels]
 
+
 @checks(ABINARY2,SEGMENTATION)
-def propagate_labels(image,labels,conflict=0):
-    """Given an image and a set of labels, apply the labels
-    to all the regions in the image that overlap a label.
-    Assign the value `conflict` to any labels that have a conflict."""
-    rlabels,_ = label(image)
-    cors = correspondences(rlabels,labels)
-    outputs = zeros(amax(rlabels)+1,'i')
+def propagate_labels(image, labels, conflict=0):
+    """Given an image and a set of labels, apply the labels to all the regions in the image that
+        overlap a label.
+        Assign the value `conflict` to any labels that have a conflict.
+    """
+    rlabels, _ = label(image)
+    cors = correspondences(rlabels, labels)
+    outputs = zeros(amax(rlabels)+1, 'i')
     oops = -(1<<30)
-    for o,i in cors.T:
-        if outputs[o]!=0: outputs[o] = oops
-        else: outputs[o] = i
+    for o, i in cors.T:
+        if outputs[o] != 0:
+            outputs[o] = oops
+        else:
+            outputs[o] = i
     outputs[outputs==oops] = conflict
     outputs[0] = 0
     return outputs[rlabels]
 
 @checks(ABINARY2,True)
 def select_regions(binary, f, min=0, nbest=100000):
-    """Given a scoring function f over slice tuples (as returned by find_objects), keeps at most
-        nbest regions whose scores is higher than min.
+    """Given a scoring function `f` over slice tuples (as returned by find_objects), keeps at most
+        `nbest` regions whose scores are higher than `min`.
     """
     labels, n = label(binary)
     objects = find_objects(labels)
@@ -206,7 +217,8 @@ def select_regions(binary, f, min=0, nbest=100000):
     keep = zeros(len(objects)+1, 'i')
     if nbest > 0:
         for i in best[-nbest:]:
-            if scores[i]<=min: continue
+            if scores[i]<=min:
+                continue
             keep[i+1] = 1
     # print scores,best[-nbest:],keep
     # print sorted(list(set(labels.ravel())))

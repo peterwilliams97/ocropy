@@ -1,12 +1,10 @@
-from __future__ import print_function
-
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.ndimage import filters,interpolation
 
 from toplevel import *
-import sl,morph
+import sl, morph
 
 def B(a):
     if a.dtype==np.dtype('B'): return a
@@ -14,6 +12,7 @@ def B(a):
 
 class record:
     def __init__(self,**kw): self.__dict__.update(kw)
+
 
 def blackout_images(image,ticlass):
     """Takes a page image and a ticlass text/image classification image and replaces
@@ -37,10 +36,12 @@ def blackout_images(image,ticlass):
         r.pad_by(-5,-5)
         ocropy.fill_rect(image,r,255)
 
+
 def binary_objects(binary):
-    labels,n = morph.label(binary)
+    labels, n = morph.label(binary)
     objects = morph.find_objects(labels)
     return objects
+
 
 def estimate_scale(binary):
     objects = binary_objects(binary)
@@ -52,22 +53,27 @@ def estimate_scale(binary):
     scale = np.median(scalemap[(scalemap>3)&(scalemap<100)])
     return scale
 
-def compute_boxmap(binary,scale,threshold=(.5,4),dtype='i'):
+
+def compute_boxmap(binary, scale, threshold=(.5, 4), dtype='i'):
     objects = binary_objects(binary)
-    bysize = sorted(objects,key=sl.area)
-    boxmap = np.zeros(binary.shape,dtype)
+    bysize = sorted(objects, key=sl.area)
+    boxmap = np.zeros(binary.shape, dtype)
     for o in bysize:
-        if sl.area(o)**.5<threshold[0]*scale: continue
-        if sl.area(o)**.5>threshold[1]*scale: continue
+        if sl.area(o)**.5 < threshold[0]*scale:
+            continue
+        if sl.area(o)**.5 > threshold[1]*scale:
+            continue
         boxmap[o] = 1
     return boxmap
 
-def compute_lines(segmentation,scale):
-    """Given a line segmentation map, computes a list
-    of tuples consisting of 2D slices and masked images."""
+
+def compute_lines(segmentation, scale):
+    """Given a line segmentation map, computes a list of tuples consisting of 2D slices and masked
+        images.
+    """
     lobjects = morph.find_objects(segmentation)
     lines = []
-    for i,o in enumerate(lobjects):
+    for i, o in enumerate(lobjects):
         if o is None: continue
         if sl.dim1(o)<2*scale or sl.dim0(o)<scale: continue
         mask = (segmentation[o]==i+1)
@@ -85,35 +91,38 @@ def pad_image(image,d,cval=np.inf):
     result[d:-d,d:-d] = image
     return result
 
+
 @checks(ARANK(2),int,int,int,int,mode=str,cval=True,_=GRAYSCALE)
-def extract(image,y0,x0,y1,x1,mode='nearest',cval=0):
-    h,w = image.shape
-    ch,cw = y1-y0,x1-x0
-    y,x = np.clip(y0,0,max(h-ch,0)),np.clip(x0,0,max(w-cw, 0))
-    sub = image[y:y+ch,x:x+cw]
+def extract(image, y0, x0, y1, x1, mode='nearest', cval=0):
+    h, w = image.shape
+    ch, cw = y1-y0,x1-x0
+    y, x = np.clip(y0,0,max(h-ch,0)), np.clip(x0,0,max(w-cw, 0))
+    sub = image[y:y+ch, x:x+cw]
     # print("extract", image.dtype, image.shape)
     try:
-        r = interpolation.shift(sub,(y-y0,x-x0),mode=mode,cval=cval,order=0)
+        r = interpolation.shift(sub, (y-y0,x-x0), mode=mode, cval=cval, order=0)
         if cw > w or ch > h:
             pady0, padx0 = max(-y0, 0), max(-x0, 0)
-            r = interpolation.affine_transform(r, np.eye(2), offset=(pady0, padx0), cval=1, output_shape=(ch, cw))
+            r = interpolation.affine_transform(r, np.eye(2), offset=(pady0, padx0), cval=1,
+                        output_shape=(ch, cw))
         return r
 
     except RuntimeError:
-        # workaround for platform differences between 32bit and 64bit
-        # scipy.ndimage
+        # workaround for platform differences between 32bit and 64bit scipy.ndimage
         dtype = sub.dtype
-        sub = np.array(sub,dtype='float64')
-        sub = interpolation.shift(sub,(y-y0,x-x0),mode=mode,cval=cval,order=0)
-        sub = np.array(sub,dtype=dtype)
+        sub = np.array(sub, dtype='float64')
+        sub = interpolation.shift(sub, (y-y0,x-x0), mode=mode, cval=cval, order=0)
+        sub = np.array(sub, dtype=dtype)
         return sub
+
 
 @checks(ARANK(2),True,pad=int,expand=int,_=GRAYSCALE)
 def extract_masked(image, linedesc, pad=5, expand=0):
     """Extract a subimage from the image using the line descriptor.
-    A line descriptor consists of bounds and a mask."""
-    y0,x0,y1,x1 = [int(x) for x in [linedesc.bounds[0].start, linedesc.bounds[1].start,
-                                    linedesc.bounds[0].stop, linedesc.bounds[1].stop]]
+        A line descriptor consists of bounds and a mask.
+    """
+    y0, x0, y1, x1 = [int(x) for x in [linedesc.bounds[0].start, linedesc.bounds[1].start,
+                                       linedesc.bounds[0].stop, linedesc.bounds[1].stop]]
     if pad>0:
         mask = pad_image(linedesc.mask,pad,cval=0)
     else:
@@ -123,6 +132,7 @@ def extract_masked(image, linedesc, pad=5, expand=0):
         mask = filters.maximum_filter(mask, (expand, expand))
     line = np.where(mask, line, np.amax(line))
     return line
+
 
 def reading_order(lines, highlight=None, debug=0):
     """Given the list of lines (a list of 2D slices), computes the partial reading order.  The
@@ -145,15 +155,16 @@ def reading_order(lines, highlight=None, debug=0):
         plt.title("highlight")
         plt.imshow(binary)
         plt.ginput(1,debug)
-    for i,u in enumerate(lines):
-        for j,v in enumerate(lines):
-            if x_overlaps(u,v):
-                if above(u,v):
-                    order[i,j] = 1
+
+    for i, u in enumerate(lines):
+        for j, v in enumerate(lines):
+            if x_overlaps(u, v):
+                if above(u, v):
+                    order[i, j] = 1
             else:
                 if [w for w in lines if separates(w,u,v)]==[]:
-                    if left_of(u,v):
-                        order[i,j] = 1
+                    if left_of(u, v):
+                        order[i, j] = 1
             if j==highlight and order[i,j]:
                 print((i, j), end=' ')
                 y0,x0 = sl.center(lines[i])
@@ -171,7 +182,7 @@ def topsort(order):
     n = len(order)
     visited = np.zeros(n)
     L = []
-    print("$$ topsort: order=%s n=%d" % (list(order.shape), n))
+    print("$$ topsort: n=%d order=%s" % (n, desc(order)))
 
     def visit(k):
         if visited[k]:
@@ -185,14 +196,15 @@ def topsort(order):
         visit(k)
     return L #[::-1]
 
+
 def find(condition):
     "Return the indices where ravel(condition) is true"
     res, = np.nonzero(np.ravel(condition))
     return res
 
-def show_lines(image,lines,lsort):
-    """Overlays the computed lines on top of the image, for debugging
-    purposes."""
+
+def show_lines(image, lines, lsort):
+    """Overlays the computed lines on top of the image, for debugging purposes."""
     ys,xs = [],[]
     plt.clf()
     plt.cla()
