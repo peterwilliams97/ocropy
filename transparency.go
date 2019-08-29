@@ -31,6 +31,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	rects, err := loadRectList(maskPath)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("rects=%#v\n", rects)
+
 	imgfile, err := os.Open(inPath)
 	if err != nil {
 		fmt.Printf("%q file not found!\n", inPath)
@@ -43,7 +49,7 @@ func main() {
 		panic(err)
 	}
 
-	rgba := overlay(img)
+	rgba := overlay(img, rects)
 
 	err = save(outPath, rgba)
 	if err != nil {
@@ -56,27 +62,32 @@ func main() {
 		panic(err)
 	}
 
-	rects, err := loadRectList(maskPath)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("rects=%#v\n", rects)
 }
 
-func overlay(img image.Image) image.Image {
+func overlay(img image.Image, rectList []Rect) image.Image {
 	bounds := img.Bounds()
 	fmt.Printf("bounds=%#v\n", bounds)
 	w, h := bounds.Max.X, bounds.Max.Y
 	fmt.Printf("w=%d h=%d\n", w, h)
 
 	rgba := image.NewRGBA(img.Bounds())
-	draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, draw.Src)
 
-	for y := 0; y < h/2; y++ {
-		for x := 0; x < w/2; x++ {
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
 			rgba.Set(x, y, image.Transparent)
 		}
 	}
+	// rgba := image.NewRGBA(img.Bounds())
+	// draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, draw.Src)
+	for _, r := range rectList {
+		draw.Draw(rgba, r.bounds(), img, r.position(), draw.Src)
+	}
+
+	// for y := 0; y < h/2; y++ {
+	// 	for x := 0; x < w/2; x++ {
+	// 		rgba.Set(x, y, image.Transparent)
+	// 	}
+	// }
 	return rgba
 }
 
@@ -86,7 +97,15 @@ var rectList = []Rect{
 }
 
 type Rect struct {
-	X0, Y0, X1, Y1 float64
+	X0, Y0, X1, Y1 int
+}
+
+func (r Rect) bounds() image.Rectangle {
+	return image.Rect(r.X0, r.Y0, r.X1, r.Y1)
+}
+
+func (r Rect) position() image.Point {
+	return image.Point{r.X0, r.Y0}
 }
 
 func saveRectList(filename string, rectList []Rect) error {
