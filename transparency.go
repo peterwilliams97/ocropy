@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"image" // for color.Alpha{a}
 	"image/draw"
 	"image/png"
+	"io/ioutil"
 	"os"
 )
 
@@ -14,32 +17,57 @@ func init() {
 	image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
 }
 
-func main() {
-	args := os.Args
-	fmt.Printf("args=%v\n", args)
-	imgPath := args[1]
+const usage = "Make masked image"
 
-	imgfile, err := os.Open(imgPath)
+func main() {
+	var inPath, maskPath, outPath string
+	flag.StringVar(&inPath, "i", "", "Input image.")
+	flag.StringVar(&maskPath, "m", "", "JSON file containing rectangles of PNG.")
+	flag.StringVar(&outPath, "o", "", "Output image.")
+	makeUsage(usage)
+	flag.Parse()
+	if inPath == "" || maskPath == "" || outPath == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	imgfile, err := os.Open(inPath)
 	if err != nil {
-		fmt.Printf("%q file not found!\n", imgPath)
+		fmt.Printf("%q file not found!\n", inPath)
 		os.Exit(1)
 	}
 	defer imgfile.Close()
 
 	img, _, err := image.Decode(imgfile)
+	if err != nil {
+		panic(err)
+	}
+
+	rgba := overlay(img)
+
+	err = save(outPath, rgba)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("saved to %q\n", outPath)
+
+	err = saveRectList(maskPath, rectList)
+	if err != nil {
+		panic(err)
+	}
+
+	rects, err := loadRectList(maskPath)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("rects=%#v\n", rects)
+}
+
+func overlay(img image.Image) image.Image {
 	bounds := img.Bounds()
 	fmt.Printf("bounds=%#v\n", bounds)
 	w, h := bounds.Max.X, bounds.Max.Y
 	fmt.Printf("w=%d h=%d\n", w, h)
-
-	// canvas := image.NewAlpha(bounds)
-	// canvas.Set(w/2, h/2, image.Transparent)
-	// // http://golang.org/pkg/image/color/#Alpha
-	// // Alpha represents an 8-bit alpha color.
-	// x := 10
-	// y := 10
-	// a := uint8((23*x + 29*y) % 0x100)
-	// canvas.SetAlpha(x, y, color.Alpha{a})
 
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, draw.Src)
@@ -49,13 +77,35 @@ func main() {
 			rgba.Set(x, y, image.Transparent)
 		}
 	}
+	return rgba
+}
 
-	outPath := "out.png"
-	err = save(outPath, rgba)
+var rectList = []Rect{
+	Rect{50, 50, 450, 650},
+	Rect{500, 1000, 900, 1800},
+}
+
+type Rect struct {
+	X0, Y0, X1, Y1 float64
+}
+
+func saveRectList(filename string, rectList []Rect) error {
+	b, err := json.MarshalIndent(rectList, "", "\t")
 	if err != nil {
-		panic(err)
+		return err
 	}
-	fmt.Printf("saved to %q\n", outPath)
+	err = ioutil.WriteFile(filename, b, 0644)
+	return err
+}
+
+func loadRectList(filename string) ([]Rect, error) {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var rectList []Rect
+	err = json.Unmarshal(b, &rectList)
+	return rectList, err
 }
 
 func drawPixels(img *image.Alpha, px, py, pw, ph uint, fill bool) {
@@ -77,4 +127,13 @@ func save(filename string, img image.Image) error {
 		return err
 	}
 	return png.Encode(out, img)
+}
+
+// makeUsage updates flag.Usage to include usage message `msg`.
+func makeUsage(msg string) {
+	usage := flag.Usage
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, msg)
+		usage()
+	}
 }
