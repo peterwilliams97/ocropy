@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image" // for color.Alpha{a}
 	"image/draw"
+	"image/jpeg"
 	"image/png"
 	"io/ioutil"
 	"os"
@@ -31,6 +32,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	bgdPath := outPath + ".bgd.jpg"
+	fgdPath := outPath + ".fgd.png"
+
 	rects, err := loadRectList(maskPath)
 	if err != nil {
 		panic(err)
@@ -49,45 +53,77 @@ func main() {
 		panic(err)
 	}
 
-	rgba := overlay(img, rects)
+	dilation := 5
+	fgd := makeForeground(img, dilate(rects, dilation))
+	bgd := makeBackground(img, dilate(rects, -dilation))
 
-	err = save(outPath, rgba)
+	err = saveImage(fgdPath, fgd, true)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("saved to %q\n", outPath)
+	fmt.Printf("saved foreground to %q\n", fgdPath)
 
-	err = saveRectList(maskPath, rectList)
+	err = saveImage(bgdPath, bgd, false)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("saved background to %q\n", bgdPath)
+
+	// err = saveRectList(maskPath, rectList)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 }
 
-func overlay(img image.Image, rectList []Rect) image.Image {
+func makeForeground(img image.Image, rectList []Rect) image.Image {
 	bounds := img.Bounds()
-	fmt.Printf("bounds=%#v\n", bounds)
 	w, h := bounds.Max.X, bounds.Max.Y
+	r := fromBounds(bounds)
+	fmt.Printf("makeForeground: rectList=%v\n", rectList)
+	fmt.Printf("bounds=%#v\n", bounds)
+	fmt.Printf("r=%#v\n", r)
 	fmt.Printf("w=%d h=%d\n", w, h)
 
 	rgba := image.NewRGBA(img.Bounds())
-
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			rgba.Set(x, y, image.Transparent)
-		}
-	}
-	// rgba := image.NewRGBA(img.Bounds())
-	// draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, draw.Src)
+	fillRect(rgba, r, image.Transparent)
 	for _, r := range rectList {
 		draw.Draw(rgba, r.bounds(), img, r.position(), draw.Src)
 	}
+	return rgba
+}
 
-	// for y := 0; y < h/2; y++ {
-	// 	for x := 0; x < w/2; x++ {
-	// 		rgba.Set(x, y, image.Transparent)
-	// 	}
-	// }
+func dilate(rectList []Rect, d int) []Rect {
+	outList := make([]Rect, len(rectList))
+	for i, r := range rectList {
+		if r.X1-r.X0 > 2*d {
+			r.X0 -= d
+			r.X1 += d
+		}
+		if r.Y1-r.Y0 > 2*d {
+			r.Y0 -= d
+			r.Y1 += d
+		}
+		outList[i] = r
+	}
+	fmt.Printf("dilate: d=%d %v->%v\n", d, rectList, outList)
+	return outList
+}
+
+func makeBackground(img image.Image, rectList []Rect) image.Image {
+	bounds := img.Bounds()
+	w, h := bounds.Max.X, bounds.Max.Y
+	r := fromBounds(bounds)
+	fmt.Printf("makeBackground: rectList=%v\n", rectList)
+	fmt.Printf("bounds=%#v\n", bounds)
+	fmt.Printf("r=%#v\n", r)
+	fmt.Printf("w=%d h=%d\n", w, h)
+
+	rgba := image.NewRGBA(img.Bounds())
+	draw.Draw(rgba, r.bounds(), img, r.position(), draw.Src)
+	for _, r := range rectList {
+		fillRect(rgba, r, image.White)
+	}
 	return rgba
 }
 
@@ -100,12 +136,29 @@ type Rect struct {
 	X0, Y0, X1, Y1 int
 }
 
+func fromBounds(b image.Rectangle) Rect {
+	return Rect{
+		X0: b.Min.X,
+		Y0: b.Min.Y,
+		X1: b.Max.X,
+		Y1: b.Max.Y,
+	}
+}
+
 func (r Rect) bounds() image.Rectangle {
 	return image.Rect(r.X0, r.Y0, r.X1, r.Y1)
 }
 
 func (r Rect) position() image.Point {
 	return image.Point{r.X0, r.Y0}
+}
+
+func fillRect(img *image.RGBA, r Rect, col *image.Uniform) {
+	for y := r.Y0; y < r.Y1; y++ {
+		for x := r.X0; x < r.X1; x++ {
+			img.Set(x, y, col)
+		}
+	}
 }
 
 func saveRectList(filename string, rectList []Rect) error {
@@ -140,12 +193,15 @@ func drawPixels(img *image.Alpha, px, py, pw, ph uint, fill bool) {
 	}
 }
 
-func save(filename string, img image.Image) error {
+func saveImage(filename string, img image.Image, isPng bool) error {
 	out, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
-	return png.Encode(out, img)
+	if isPng {
+		return png.Encode(out, img)
+	}
+	return jpeg.Encode(out, img, nil)
 }
 
 // makeUsage updates flag.Usage to include usage message `msg`.

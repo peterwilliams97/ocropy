@@ -23,9 +23,9 @@ func main() {
 	common.SetLogger(common.NewConsoleLogger(common.LogLevelInfo))
 
 	var bgdPath, fgdPath, outPath string
-	flag.StringVar(&bgdPath, "b", "", "Input image.")
-	flag.StringVar(&fgdPath, "f", "", "JSON file containing rectangles of PNG.")
-	flag.StringVar(&outPath, "o", "", "Output image.")
+	flag.StringVar(&bgdPath, "b", "", "Background image.")
+	flag.StringVar(&fgdPath, "f", "", "Foregorund image.")
+	flag.StringVar(&outPath, "o", "", "Output PDF.")
 	makeUsage(usage)
 	flag.Parse()
 	if bgdPath == "" || fgdPath == "" || outPath == "" {

@@ -953,7 +953,7 @@ def remove_noise(line, minsize=8):
     print("sums=%s" % desc(sums))
     good = minimum(bin, 1 - (sums>0)*(sums<minsize))
     print("good=%s" % desc(good))
-    assert False
+    # assert False
     return good
 
 class MovingStats:
