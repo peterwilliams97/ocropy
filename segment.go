@@ -115,47 +115,14 @@ const (
 // Add image to a specific page of a PDF.  xPos and yPos define the upper left corner of the image location, and iwidth
 // is the width of the image in PDF document dimensions (height/width ratio is maintained).
 func overlay(bgdPath, fgdPath, outPath string) error {
-
 	c := creator.New()
-	if true {
-		c.NewPage()
+	c.NewPage()
 
-		if err := addImage(c, bgdPath, core.NewDCTEncoder()); err != nil {
-			return err
-		}
-		// core.NewFlateEncoder()
-		if err := addImage(c, fgdPath, nil); err != nil {
-			return err
-		}
-
-	} else {
-		// Prepare the images.
-		bimg, err := c.NewImageFromFile(bgdPath)
-		if err != nil {
-			return err
-		}
-		// bimg.SetEncoder(core.NewDCTEncoder())
-		bimg.ScaleToWidth(width)
-		bimg.SetPos(xPos, yPos)
-
-		fimg, err := c.NewImageFromFile(fgdPath)
-		if err != nil {
-			return err
-		}
-
-		fimg.SetEncoder(core.NewFlateEncoder())
-		fimg.ScaleToWidth(width)
-		fimg.SetPos(xPos, yPos)
-
-		c.NewPage()
-		err = c.Draw(bimg)
-		if err != nil {
-			return err
-		}
-		err = c.Draw(fimg)
-		if err != nil {
-			return err
-		}
+	if err := addImage(c, bgdPath, core.NewDCTEncoder()); err != nil {
+		return err
+	}
+	if err := addImage(c, fgdPath, core.NewFlateEncoder()); err != nil {
+		return err
 	}
 
 	return c.WriteToFile(outPath)
@@ -190,6 +157,26 @@ func makeForeground(img image.Image, rectList []Rect) image.Image {
 		// fillRect(rgba, r, image.White)
 	}
 	return rgba
+}
+
+func makeForegroundList(img image.Image, rectList []Rect) []image.Image {
+	bounds := img.Bounds()
+	w, h := bounds.Max.X, bounds.Max.Y
+	r := fromBounds(bounds)
+	fmt.Printf("makeForegroundList: rectList=%v\n", rectList)
+	fmt.Printf("bounds=%#v\n", bounds)
+	fmt.Printf("r=%#v\n", r)
+	fmt.Printf("w=%d h=%d\n", w, h)
+
+	// fgdList := make([]*image.RGBA, len(rectList))
+	fgdList := make([]*image.Image, len(rectList))
+	for i, r := range rectList {
+		rgba := image.NewRGBA(r.bounds())
+		draw.Draw(rgba, r.bounds(), img, image.ZP, draw.Src)
+		fgdList[i] = rgba
+		fmt.Printf("%4d: %v -> %v\n", i, r, rgba.Bounds())
+	}
+	return fgdList
 }
 
 func makeBackground(img image.Image, rectList []Rect) image.Image {
