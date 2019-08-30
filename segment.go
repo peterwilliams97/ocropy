@@ -1,5 +1,20 @@
 package main
 
+/*
+
+<</Filter /FlateDecode/Type /XObject/Subtype /Image
+ /Width 2479/Height 3508/BitsPerComponent 8
+ /ColorSpace /DeviceRGB
+ /Length 2,681,392>>
+
+ <</Filter /FlateDecode/Type /XObject/Subtype /Image
+  /Width 2479/Height 3508/BitsPerComponent 8
+  /ColorSpace /DeviceRGB
+  /SMask 9 0 R
+  /Length 1,915,183>>
+
+*/
+
 import (
 	"encoding/json"
 	"flag"
@@ -10,12 +25,16 @@ import (
 	"image/png"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+
+	"github.com/unidoc/unipdf/v3/core"
+	"github.com/unidoc/unipdf/v3/creator"
 )
 
 func init() {
 	// without this register .. At(), Bounds() functions will
 	// caused memory pointer error!!
-	image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
+	// image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
 }
 
 const usage = "Make masked image"
@@ -23,8 +42,8 @@ const usage = "Make masked image"
 func main() {
 	var inPath, maskPath, outPath string
 	flag.StringVar(&inPath, "i", "", "Input image.")
-	flag.StringVar(&maskPath, "m", "", "JSON file containing rectangles of PNG.")
-	flag.StringVar(&outPath, "o", "", "Output image.")
+	flag.StringVar(&maskPath, "m", "", "JSON file containing rectangles of images.")
+	flag.StringVar(&outPath, "o", "", "Output PDF files.")
 	makeUsage(usage)
 	flag.Parse()
 	if inPath == "" || maskPath == "" || outPath == "" {
@@ -32,8 +51,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	bgdPath := outPath + ".bgd.jpg"
-	fgdPath := outPath + ".fgd.png"
+	bgdPath := changeExt(outPath, ".bgd.jpg")
+	fgdPath := changeExt(outPath, ".fgd.png")
+	origPathPng := changeExt(outPath, ".orig.png")
+	origPathJpg := changeExt(outPath, ".orig.jpg")
 
 	rects, err := loadRectList(maskPath)
 	if err != nil {
@@ -57,6 +78,18 @@ func main() {
 	fgd := makeForeground(img, dilate(rects, dilation))
 	bgd := makeBackground(img, dilate(rects, -dilation))
 
+	err = saveImage(origPathPng, img, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("saved original to %q\n", origPathPng)
+
+	err = saveImage(origPathJpg, img, false)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("saved original to %q\n", origPathJpg)
+
 	err = saveImage(fgdPath, fgd, true)
 	if err != nil {
 		panic(err)
@@ -69,11 +102,76 @@ func main() {
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
 
-	// err = saveRectList(maskPath, rectList)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	overlay(bgdPath, fgdPath, outPath)
+}
 
+const (
+	width  = 210.0 / 25.4 * 72.0 / 2
+	height = 297.0 / 25.4 * 72.0 / 2
+	xPos   = width / 5.0
+	yPos   = height / 5.0
+)
+
+// Add image to a specific page of a PDF.  xPos and yPos define the upper left corner of the image location, and iwidth
+// is the width of the image in PDF document dimensions (height/width ratio is maintained).
+func overlay(bgdPath, fgdPath, outPath string) error {
+
+	c := creator.New()
+	if true {
+		c.NewPage()
+
+		if err := addImage(c, bgdPath, core.NewDCTEncoder()); err != nil {
+			return err
+		}
+		// core.NewFlateEncoder()
+		if err := addImage(c, fgdPath, nil); err != nil {
+			return err
+		}
+
+	} else {
+		// Prepare the images.
+		bimg, err := c.NewImageFromFile(bgdPath)
+		if err != nil {
+			return err
+		}
+		// bimg.SetEncoder(core.NewDCTEncoder())
+		bimg.ScaleToWidth(width)
+		bimg.SetPos(xPos, yPos)
+
+		fimg, err := c.NewImageFromFile(fgdPath)
+		if err != nil {
+			return err
+		}
+
+		fimg.SetEncoder(core.NewFlateEncoder())
+		fimg.ScaleToWidth(width)
+		fimg.SetPos(xPos, yPos)
+
+		c.NewPage()
+		err = c.Draw(bimg)
+		if err != nil {
+			return err
+		}
+		err = c.Draw(fimg)
+		if err != nil {
+			return err
+		}
+	}
+
+	return c.WriteToFile(outPath)
+}
+
+func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder) error {
+	img, err := c.NewImageFromFile(imgPath)
+	if err != nil {
+		return err
+	}
+	if encoder != nil {
+		img.SetEncoder(encoder)
+	}
+	img.ScaleToWidth(width)
+	img.SetPos(xPos, yPos)
+	return c.Draw(img)
 }
 
 func makeForeground(img image.Image, rectList []Rect) image.Image {
@@ -89,25 +187,9 @@ func makeForeground(img image.Image, rectList []Rect) image.Image {
 	fillRect(rgba, r, image.Transparent)
 	for _, r := range rectList {
 		draw.Draw(rgba, r.bounds(), img, r.position(), draw.Src)
+		// fillRect(rgba, r, image.White)
 	}
 	return rgba
-}
-
-func dilate(rectList []Rect, d int) []Rect {
-	outList := make([]Rect, len(rectList))
-	for i, r := range rectList {
-		if r.X1-r.X0 > 2*d {
-			r.X0 -= d
-			r.X1 += d
-		}
-		if r.Y1-r.Y0 > 2*d {
-			r.Y0 -= d
-			r.Y1 += d
-		}
-		outList[i] = r
-	}
-	fmt.Printf("dilate: d=%d %v->%v\n", d, rectList, outList)
-	return outList
 }
 
 func makeBackground(img image.Image, rectList []Rect) image.Image {
@@ -127,10 +209,10 @@ func makeBackground(img image.Image, rectList []Rect) image.Image {
 	return rgba
 }
 
-var rectList = []Rect{
-	Rect{50, 50, 450, 650},
-	Rect{500, 1000, 900, 1800},
-}
+// var rectList = []Rect{
+// 	Rect{50, 50, 450, 650},
+// 	Rect{500, 1000, 900, 1800},
+// }
 
 type Rect struct {
 	X0, Y0, X1, Y1 int
@@ -151,6 +233,23 @@ func (r Rect) bounds() image.Rectangle {
 
 func (r Rect) position() image.Point {
 	return image.Point{r.X0, r.Y0}
+}
+
+func dilate(rectList []Rect, d int) []Rect {
+	outList := make([]Rect, len(rectList))
+	for i, r := range rectList {
+		if r.X1-r.X0 > 2*d {
+			r.X0 -= d
+			r.X1 += d
+		}
+		if r.Y1-r.Y0 > 2*d {
+			r.Y0 -= d
+			r.Y1 += d
+		}
+		outList[i] = r
+	}
+	fmt.Printf("dilate: d=%d %v->%v\n", d, rectList, outList)
+	return outList
 }
 
 func fillRect(img *image.RGBA, r Rect, col *image.Uniform) {
@@ -202,6 +301,11 @@ func saveImage(filename string, img image.Image, isPng bool) error {
 		return png.Encode(out, img)
 	}
 	return jpeg.Encode(out, img, nil)
+}
+
+func changeExt(filename, newExt string) string {
+	ext := filepath.Ext(filename)
+	return filename[:len(filename)-len(ext)] + newExt
 }
 
 // makeUsage updates flag.Usage to include usage message `msg`.

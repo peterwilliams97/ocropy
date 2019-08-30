@@ -2,20 +2,18 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"image" // for color.Alpha{a}
-	"image/png"
+	"fmt" // for color.Alpha{a}
 	"os"
 
 	"github.com/unidoc/unipdf/v3/common"
 	"github.com/unidoc/unipdf/v3/creator"
 )
 
-func init() {
-	// without this register .. At(), Bounds() functions will
-	// caused memory pointer error!!
-	image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
-}
+// func init() {
+// 	// without this register .. At(), Bounds() functions will
+// 	// caused memory pointer error!!
+// 	// image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
+// }
 
 const usage = "Make masked image"
 
@@ -50,7 +48,6 @@ const (
 // Add image to a specific page of a PDF.  xPos and yPos define the upper left corner of the image location, and iwidth
 // is the width of the image in PDF document dimensions (height/width ratio is maintained).
 func overlay(bgdPath, fgdPath, outPath string) error {
-
 	c := creator.New()
 
 	// Prepare the images.

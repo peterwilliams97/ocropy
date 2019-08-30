@@ -94,6 +94,7 @@ def processPdfFile(pdfFile, start, end, needed, force):
     os.makedirs(outRoot, exist_ok=True)
     retval = runGhostscript(pdfFile, outRoot)
     assert retval == 0
+    return True
     fileList = glob(os.path.join(outRoot, "doc-*.png"))
     fileList.sort()
 
@@ -139,18 +140,26 @@ def pageNum(pngPath):
 
 
 def runGhostscript(pdf, outputDir):
+    retval = runGhostscriptDevice(pdf, outputDir, "png16m", gsImageFormat)
+    assert retval == 0
+    retval = runGhostscriptDevice(pdf, outputDir, "jpeg", "doc-%03d.jpg")
+    assert retval == 0
+    return retval
+
+def runGhostscriptDevice(pdf, outputDir, device, gsImageFormat):
     """runGhostscript runs Ghostscript on file `pdf` to create file one png file per page in
         directory `outputDir`.
     """
     print("runGhostscript: pdf=%s outputDir=%s" % (pdf, outputDir))
     outputPath = os.path.join(outputDir, gsImageFormat)
+    deviceArg = "-sDEVICE=%s" % device
     output = "-sOutputFile=%s" % outputPath
     cmd = ["gs",
            "-dSAFER",
            "-dBATCH",
            "-dNOPAUSE",
            "-r300",
-           "-sDEVICE=png16m",
+           deviceArg,
            "-dTextAlphaBits=1",
            "-dGraphicsAlphaBits=1",
            output,
@@ -306,13 +315,19 @@ def processPngFile(outRoot, origFile, fileNum):
         # draw.rectangle((x0, y0, x1, y1), outline=10,  width=1)
         del draw
 
-    # write to stdout
+    # write output files
+    print("outFile=%s" % outFile)
     im.save(outFile, "PNG")
     print("outFile2=%s" % outFile2)
     outDir2 = os.path.dirname(outFile2)
     os.makedirs(outDir2, exist_ok=True)
     im.save(outFile2, "PNG")
     assert os.path.exists(outFile2)
+    # outFile3, _ = os.path.splitext(outFile)
+    # outFile3 = "%s.jpg" % outFile3
+    # print("outFile3=%s" % outFile3)
+    # im.save(outFile3, "JPEG")
+    # assert os.path.exists(outFile3)
     return True
 
 
