@@ -78,8 +78,9 @@ func main() {
 	bounds := img.Bounds()
 	w, h := bounds.Max.X, bounds.Max.Y
 
-	dilation := 0
-	fgdList := makeForegroundList(img, dilate(rectList, dilation))
+	dilation := 50
+	// fgdList := makeForegroundList(img, dilate(rectList, dilation))
+	fgdList := makeForegroundList(img, rectList)
 	bgd := makeBackground(img, dilate(rectList, -dilation))
 
 	err = saveImage(origPathPng, img, true)
@@ -111,11 +112,7 @@ func main() {
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
 
-	overlayImages(bgdPath, rectList, fgdPathList, outPath, w, h)
-}
-
-func makeFgdPath(outPath string, i int) string {
-	return changeExt(outPath, fmt.Sprintf("%03d.fgd.png", i))
+	overlayImages(bgdPath, rectList, fgdPathList, outPath, w, h, dilation)
 }
 
 const (
@@ -136,20 +133,28 @@ const (
 )
 
 // computeScale returns the scale for w x h -> width x height
-func computeScale(width, height, w, h float64) float64 {
+func computeScale(width, height, w, h float64) (scale, xOfs, yOfs float64) {
 	xScale := width / w
 	yScale := height / h
 	if xScale < yScale {
-		return xScale
+		scale = xScale
+		yOfs = 0.5 * (height - scale*h)
+	} else {
+		scale = yScale
+		xOfs = 0.5 * (width - scale*w)
 	}
-	return yScale
+	if xOfs < 0 || yOfs < 0 {
+		panic("Can't happend")
+	}
+	return
 }
 
 // overlay image in `fgdPath` over image in `bgdPath` (currently assumed to be have the same
 // dimensions `w` x `h`) and write the resulting single page `width` x `height` PDF to `outPath`.
 // is the width of the image in PDF document dimensions (height/width ratio is maintained).
-func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPath string, w, h int) error {
-	scale := computeScale(width, height, float64(w), float64(h))
+func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPath string,
+	w, h, dilation int) error {
+	scale, xOfs, yOfs := computeScale(width, height, float64(w), float64(h))
 	common.Log.Info("overlayImages: scale=%.3f width=%.1f height=%.1f w=%d h=%d",
 		scale, width, height, w, h)
 	common.Log.Info("               scale * w x h = %.1f x%.1f", scale*float64(w), scale*float64(h))
@@ -157,12 +162,15 @@ func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPat
 	c.NewPage()
 
 	r := Rect{X0: 0, Y0: 0, X1: w, Y1: h}
-	if err := addImage(c, bgdPath, core.NewDCTEncoder(), r, scale); err != nil { // !@#$ DCT
+	dctEnc := core.NewDCTEncoder()
+	dctEnc.Width = w
+	dctEnc.Height = h
+	if err := addImage(c, bgdPath, dctEnc, r, scale, xOfs, yOfs, 0); err != nil { // !@#$ DCT
 		return err
 	}
 	for i, fgdPath := range fgdPathList {
 		r := rectList[i]
-		if err := addImage(c, fgdPath, core.NewFlateEncoder(), r, scale); err != nil {
+		if err := addImage(c, fgdPath, core.NewFlateEncoder(), r, scale, xOfs, yOfs, dilation); err != nil {
 			return err
 		}
 	}
@@ -171,7 +179,8 @@ func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPat
 }
 
 // addImage adds image in `imagePath` to `c` with encoding and scale given by `encoder` and `scale`.
-func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder, r Rect, scale float64) error {
+func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder,
+	r Rect, scale, xOfs, yOfs float64, dilation int) error {
 	common.Log.Info("==================================================== addImage")
 	img, err := c.NewImageFromFile(imgPath)
 	if err != nil {
@@ -183,10 +192,16 @@ func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder, r 
 	// common.Log.Info("addImage: widthMM=%.2f heightMM=%.2f", widthMM, heightMM)
 	// common.Log.Info("addImage: widthPt=%.2f heightPt=%.2f", widthPt, heightPt)
 
-	x, y := float64(r.X0)*scale, float64(r.Y0)*scale
+	// x, y := float64(r.X0+dilation)*scale+xOfs, float64(r.Y0-dilation)*scale+yOfs
+	// x, y := float64(r.X0-dilation)*scale, float64(r.Y0)*scale
+	// x, y := float64(r.X0-dilation)*scale, float64(r.Y0)*scale
+	x, y := float64(r.X0)*scale+xOfs, float64(r.Y0)*scale+yOfs
+
 	w, h := float64(r.X1-r.X0)*scale, float64(r.Y1-r.Y0)*scale // +1? !@#$
+	common.Log.Info("addImage: r=%v scale=%.3f xOfs=%.3f yOfs=%.3f", r, scale, xOfs, yOfs)
 	common.Log.Info("addImage: xPos=%6.2f yPos=%6.2f width=%6.2f height=%6.2f %q", x, y, w, h, imgPath)
 	// img.Scale(scale, scale)
+	// img.SetPos(x-float64(dilation), y+float64(dilation))
 	img.SetPos(x, y)
 	img.SetWidth(w)
 	img.SetHeight(h)
@@ -222,7 +237,6 @@ func makeForegroundList(img image.Image, rectList []Rect) []image.Image {
 	fmt.Printf("r=%#v\n", r)
 	fmt.Printf("w=%d h=%d\n", w, h)
 
-	// fgdList := make([]*image.RGBA, len(rectList))
 	fgdList := make([]image.Image, len(rectList))
 	for i, r := range rectList {
 		rgba := image.NewRGBA(r.zpBounds())
@@ -281,14 +295,14 @@ func (r Rect) zpBounds() image.Rectangle {
 func dilate(rectList []Rect, d int) []Rect {
 	outList := make([]Rect, len(rectList))
 	for i, r := range rectList {
-		if r.X1-r.X0 > 2*d {
-			r.X0 -= d
-			r.X1 += d
+		if r.X1-r.X0 < 2*d || r.Y1-r.Y0 < 2*d {
+			common.Log.Error("r=%+v dilation=%d", r, d)
+			panic("not allowed")
 		}
-		if r.Y1-r.Y0 > 2*d {
-			r.Y0 -= d
-			r.Y1 += d
-		}
+		r.X0 -= d
+		r.X1 += d
+		r.Y0 -= d
+		r.Y1 += d
 		outList[i] = r
 	}
 	fmt.Printf("dilate: d=%d %v->%v\n", d, rectList, outList)
@@ -346,7 +360,15 @@ func saveImage(filename string, img image.Image, isPng bool) error {
 	return jpeg.Encode(out, img, nil)
 }
 
+const imageDir = "images"
+
+func makeFgdPath(outPath string, i int) string {
+	return changeExt(outPath, fmt.Sprintf("%03d.fgd.png", i))
+}
+
 func changeExt(filename, newExt string) string {
+	base := filepath.Base(filename)
+	filename = filepath.Join(imageDir, base)
 	ext := filepath.Ext(filename)
 	return filename[:len(filename)-len(ext)] + newExt
 }
