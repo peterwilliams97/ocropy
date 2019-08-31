@@ -55,15 +55,14 @@ func main() {
 	}
 
 	bgdPath := changeExt(outPath, ".bgd.jpg")
-	fgdPath := changeExt(outPath, ".fgd.png")
 	origPathPng := changeExt(outPath, ".orig.png")
 	origPathJpg := changeExt(outPath, ".orig.jpg")
 
-	rects, err := loadRectList(maskPath)
+	rectList, err := loadRectList(maskPath)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("rects=%#v\n", rects)
+	fmt.Printf("rectList=%#v\n", rectList)
 
 	imgfile, err := os.Open(inPath)
 	if err != nil {
@@ -76,13 +75,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 	bounds := img.Bounds()
 	w, h := bounds.Max.X, bounds.Max.Y
 
-	dilation := 10
-	fgd := makeForeground(img, dilate(rects, dilation))
-	bgd := makeBackground(img, dilate(rects, -dilation))
+	dilation := 0
+	fgdList := makeForegroundList(img, dilate(rectList, dilation))
+	bgd := makeBackground(img, dilate(rectList, -dilation))
 
 	err = saveImage(origPathPng, img, true)
 	if err != nil {
@@ -96,11 +94,16 @@ func main() {
 	}
 	fmt.Printf("saved original to %q\n", origPathJpg)
 
-	err = saveImage(fgdPath, fgd, true)
-	if err != nil {
-		panic(err)
+	var fgdPathList []string
+	for i, fgd := range fgdList {
+		fgdPath := makeFgdPath(outPath, i)
+		err = saveImage(fgdPath, fgd, true)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("saved foreground to %q\n", fgdPath)
+		fgdPathList = append(fgdPathList, fgdPath)
 	}
-	fmt.Printf("saved foreground to %q\n", fgdPath)
 
 	err = saveImage(bgdPath, bgd, false)
 	if err != nil {
@@ -108,7 +111,11 @@ func main() {
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
 
-	overlayImages(bgdPath, fgdPath, outPath, w, h)
+	overlayImages(bgdPath, rectList, fgdPathList, outPath, w, h)
+}
+
+func makeFgdPath(outPath string, i int) string {
+	return changeExt(outPath, fmt.Sprintf("%03d.fgd.png", i))
 }
 
 const (
@@ -141,23 +148,31 @@ func computeScale(width, height, w, h float64) float64 {
 // overlay image in `fgdPath` over image in `bgdPath` (currently assumed to be have the same
 // dimensions `w` x `h`) and write the resulting single page `width` x `height` PDF to `outPath`.
 // is the width of the image in PDF document dimensions (height/width ratio is maintained).
-func overlayImages(bgdPath, fgdPath, outPath string, w, h int) error {
+func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPath string, w, h int) error {
 	scale := computeScale(width, height, float64(w), float64(h))
+	common.Log.Info("overlayImages: scale=%.3f width=%.1f height=%.1f w=%d h=%d",
+		scale, width, height, w, h)
+	common.Log.Info("               scale * w x h = %.1f x%.1f", scale*float64(w), scale*float64(h))
 	c := creator.New()
 	c.NewPage()
 
-	if err := addImage(c, bgdPath, core.NewFlateEncoder(), scale); err != nil { // !@#$ DCT
+	r := Rect{X0: 0, Y0: 0, X1: w, Y1: h}
+	if err := addImage(c, bgdPath, core.NewDCTEncoder(), r, scale); err != nil { // !@#$ DCT
 		return err
 	}
-	if err := addImage(c, fgdPath, core.NewFlateEncoder(), scale); err != nil {
-		return err
+	for i, fgdPath := range fgdPathList {
+		r := rectList[i]
+		if err := addImage(c, fgdPath, core.NewFlateEncoder(), r, scale); err != nil {
+			return err
+		}
 	}
 
 	return c.WriteToFile(outPath)
 }
 
 // addImage adds image in `imagePath` to `c` with encoding and scale given by `encoder` and `scale`.
-func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder, scale float64) error {
+func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder, r Rect, scale float64) error {
+	common.Log.Info("==================================================== addImage")
 	img, err := c.NewImageFromFile(imgPath)
 	if err != nil {
 		return err
@@ -165,11 +180,16 @@ func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder, sc
 	if encoder != nil {
 		img.SetEncoder(encoder)
 	}
-	common.Log.Info("addImage: widthMM=%.2f heightMM=%.2f", widthMM, heightMM)
-	common.Log.Info("addImage: widthPt=%.2f heightPt=%.2f", widthPt, heightPt)
-	common.Log.Info("addImage: xPos=%.2f yPos=%.2f width=%.2f height=%.2f", xPos, yPos, width, height)
-	img.Scale(scale, scale)
-	img.SetPos(xPos, yPos)
+	// common.Log.Info("addImage: widthMM=%.2f heightMM=%.2f", widthMM, heightMM)
+	// common.Log.Info("addImage: widthPt=%.2f heightPt=%.2f", widthPt, heightPt)
+
+	x, y := float64(r.X0)*scale, float64(r.Y0)*scale
+	w, h := float64(r.X1-r.X0)*scale, float64(r.Y1-r.Y0)*scale // +1? !@#$
+	common.Log.Info("addImage: xPos=%6.2f yPos=%6.2f width=%6.2f height=%6.2f %q", x, y, w, h, imgPath)
+	// img.Scale(scale, scale)
+	img.SetPos(x, y)
+	img.SetWidth(w)
+	img.SetHeight(h)
 	return c.Draw(img)
 }
 
@@ -206,9 +226,10 @@ func makeForegroundList(img image.Image, rectList []Rect) []image.Image {
 	fgdList := make([]image.Image, len(rectList))
 	for i, r := range rectList {
 		rgba := image.NewRGBA(r.zpBounds())
-		draw.Draw(rgba, r.zpBounds(), img, image.ZP, draw.Src)
+		wind := r.bounds()
+		draw.Draw(rgba, r.zpBounds(), img, r.position(), draw.Src)
 		fgdList[i] = rgba
-		fmt.Printf("%4d: %v -> %v\n", i, r, rgba.Bounds())
+		fmt.Printf("%4d: %v=%v -> %v\n", i, r, wind, rgba.Bounds())
 	}
 	return fgdList
 }
