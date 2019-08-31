@@ -43,20 +43,34 @@ const usage = "Make masked image"
 func main() {
 	common.SetLogger(common.NewConsoleLogger(common.LogLevelInfo))
 
-	var inPath, maskPath, outPath string
-	flag.StringVar(&inPath, "i", "", "Input image.")
+	var maskPath, outPath string
+	// flag.StringVar(&inPath, "i", "", "Input image.")
 	flag.StringVar(&maskPath, "m", "", "JSON file containing rectangles of images.")
 	flag.StringVar(&outPath, "o", "", "Output PDF files.")
 	makeUsage(usage)
 	flag.Parse()
-	if inPath == "" || maskPath == "" || outPath == "" {
+	if len(flag.Args()) == 0 || maskPath == "" || outPath == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	bgdPath := changeExt(outPath, ".bgd.jpg")
-	origPathPng := changeExt(outPath, ".orig.png")
-	origPathJpg := changeExt(outPath, ".orig.jpg")
+	c := creator.New()
+	for _, inPath := range flag.Args() {
+		err := addImageToPage(c, inPath, maskPath)
+		if err != nil {
+			panic(err)
+		}
+	}
+	err := c.WriteToFile(outPath)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func addImageToPage(c *creator.Creator, inPath, maskPath string) error {
+	bgdPath := changeExt(inPath, ".bgd.jpg")
+	origPathPng := changeExt(inPath, ".orig.png")
+	origPathJpg := changeExt(inPath, ".orig.jpg")
 
 	rectList, err := loadRectList(maskPath)
 	if err != nil {
@@ -97,7 +111,7 @@ func main() {
 
 	var fgdPathList []string
 	for i, fgd := range fgdList {
-		fgdPath := makeFgdPath(outPath, i)
+		fgdPath := makeFgdPath(inPath, i)
 		err = saveImage(fgdPath, fgd, true)
 		if err != nil {
 			panic(err)
@@ -112,7 +126,16 @@ func main() {
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
 
-	overlayImages(bgdPath, rectList, fgdPathList, outPath, w, h, dilation)
+	// c := creator.New()
+	err = overlayImages(c, bgdPath, rectList, fgdPathList, w, h, dilation)
+	if err != nil {
+		panic(err)
+	}
+	// err = c.WriteToFile(outPath)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	return nil
 }
 
 const (
@@ -152,13 +175,13 @@ func computeScale(width, height, w, h float64) (scale, xOfs, yOfs float64) {
 // overlay image in `fgdPath` over image in `bgdPath` (currently assumed to be have the same
 // dimensions `w` x `h`) and write the resulting single page `width` x `height` PDF to `outPath`.
 // is the width of the image in PDF document dimensions (height/width ratio is maintained).
-func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPath string,
+func overlayImages(c *creator.Creator, bgdPath string, rectList []Rect, fgdPathList []string,
 	w, h, dilation int) error {
 	scale, xOfs, yOfs := computeScale(width, height, float64(w), float64(h))
 	common.Log.Info("overlayImages: scale=%.3f width=%.1f height=%.1f w=%d h=%d",
 		scale, width, height, w, h)
 	common.Log.Info("               scale * w x h = %.1f x%.1f", scale*float64(w), scale*float64(h))
-	c := creator.New()
+	// c := creator.New()
 	c.NewPage()
 
 	r := Rect{X0: 0, Y0: 0, X1: w, Y1: h}
@@ -174,8 +197,8 @@ func overlayImages(bgdPath string, rectList []Rect, fgdPathList []string, outPat
 			return err
 		}
 	}
-
-	return c.WriteToFile(outPath)
+	return nil
+	// return c.WriteToFile(outPath)
 }
 
 // addImage adds image in `imagePath` to `c` with encoding and scale given by `encoder` and `scale`.
@@ -363,7 +386,7 @@ func saveImage(filename string, img image.Image, isPng bool) error {
 const imageDir = "images"
 
 func makeFgdPath(outPath string, i int) string {
-	return changeExt(outPath, fmt.Sprintf("%03d.fgd.png", i))
+	return changeExt(outPath, fmt.Sprintf("-%03d.fgd.png", i))
 }
 
 func changeExt(filename, newExt string) string {
