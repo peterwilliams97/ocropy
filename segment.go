@@ -53,6 +53,9 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	if _, err := os.Stat(imageDir); os.IsNotExist(err) {
+		os.Mkdir(imageDir, 0777)
+	}
 
 	c := creator.New()
 	for _, inPath := range flag.Args() {
@@ -92,8 +95,7 @@ func addImageToPage(c *creator.Creator, inPath, maskPath string) error {
 	bounds := img.Bounds()
 	w, h := bounds.Max.X, bounds.Max.Y
 
-	dilation := 50
-	// fgdList := makeForegroundList(img, dilate(rectList, dilation))
+	dilation := 2
 	fgdList := makeForegroundList(img, rectList)
 	bgd := makeBackground(img, dilate(rectList, -dilation))
 
@@ -126,15 +128,10 @@ func addImageToPage(c *creator.Creator, inPath, maskPath string) error {
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
 
-	// c := creator.New()
 	err = overlayImages(c, bgdPath, rectList, fgdPathList, w, h, dilation)
 	if err != nil {
 		panic(err)
 	}
-	// err = c.WriteToFile(outPath)
-	// if err != nil {
-	// 	panic(err)
-	// }
 	return nil
 }
 
@@ -188,6 +185,7 @@ func overlayImages(c *creator.Creator, bgdPath string, rectList []Rect, fgdPathL
 	dctEnc := core.NewDCTEncoder()
 	dctEnc.Width = w
 	dctEnc.Height = h
+	dctEnc.Quality = 50
 	if err := addImage(c, bgdPath, dctEnc, r, scale, xOfs, yOfs, 0); err != nil { // !@#$ DCT
 		return err
 	}
@@ -212,19 +210,10 @@ func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder,
 	if encoder != nil {
 		img.SetEncoder(encoder)
 	}
-	// common.Log.Info("addImage: widthMM=%.2f heightMM=%.2f", widthMM, heightMM)
-	// common.Log.Info("addImage: widthPt=%.2f heightPt=%.2f", widthPt, heightPt)
-
-	// x, y := float64(r.X0+dilation)*scale+xOfs, float64(r.Y0-dilation)*scale+yOfs
-	// x, y := float64(r.X0-dilation)*scale, float64(r.Y0)*scale
-	// x, y := float64(r.X0-dilation)*scale, float64(r.Y0)*scale
 	x, y := float64(r.X0)*scale+xOfs, float64(r.Y0)*scale+yOfs
-
 	w, h := float64(r.X1-r.X0)*scale, float64(r.Y1-r.Y0)*scale // +1? !@#$
 	common.Log.Info("addImage: r=%v scale=%.3f xOfs=%.3f yOfs=%.3f", r, scale, xOfs, yOfs)
 	common.Log.Info("addImage: xPos=%6.2f yPos=%6.2f width=%6.2f height=%6.2f %q", x, y, w, h, imgPath)
-	// img.Scale(scale, scale)
-	// img.SetPos(x-float64(dilation), y+float64(dilation))
 	img.SetPos(x, y)
 	img.SetWidth(w)
 	img.SetHeight(h)

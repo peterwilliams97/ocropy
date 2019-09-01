@@ -14,6 +14,7 @@ from skimage.filters.rank import entropy
 from skimage.morphology import disk
 from skimage.io import imread, imsave
 from skimage.util import img_as_ubyte
+import cv2
 
 from ocrolib.toplevel import desc
 
@@ -86,9 +87,9 @@ def processPdfFile(pdfFile, start, end, needed, force):
         print("%s exists. skipping" % outPdfFile)
         return False
 
-    os.makedirs(outRoot, exist_ok=True)
-    retval = runGhostscript(pdfFile, outRoot)
-    assert retval == 0
+    # os.makedirs(outRoot, exist_ok=True)
+    # retval = runGhostscript(pdfFile, outRoot)
+    # assert retval == 0
     fileList = glob(os.path.join(outRoot, "doc-*.png"))
     fileList.sort()
 
@@ -178,11 +179,14 @@ def processPngFile(outRoot, origFile, fileNum):
     print("outFile2=%s" % outFile2)
     # assert False
 
+    imageColor = imread(origFile, as_gray=False)
+    imageColor = img_as_ubyte(imageColor)
+
     image = imread(origFile, as_gray=True)
     image = img_as_ubyte(image)
     print("  image=%s" % desc(image))
     print("+" * 80)
-    entImage = entropy(image, disk(125))
+    entImage = entropy(image, disk(25))
     print("entImage=%s" % desc(entImage))
     entImage = normalize(entImage)
     print("entImage=%s" % desc(entImage))
@@ -193,15 +197,68 @@ def processPngFile(outRoot, origFile, fileNum):
     os.makedirs(outDir2, exist_ok=True)
     imsave(outFile2, entImage)
 
+    edgeName = outFile2 + ".edges.png"
+    edged = cv2.Canny(entImage, 30, 200)
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
+    edgedD = cv2.dilate(edged, kernel)
+    imsave(edgeName, edged)
+
+    imsave(edgeName, edged)
+    contours, _ = cv2.findContours(edgedD.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    print("%d contours %s" % (len(contours), type(contours)))
+    # print("%d contours %s:%s" % (len(contours), list(contours.shape), contours.dtype))
+    contours.sort(key=cv2.contourArea, reverse=True)
+    contours = contours[:5]  # get largest five contour area
+    rects = []
+    cImE = None
+    for i, c in enumerate(contours):
+        area = cv2.contourArea(c)
+        peri = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        x, y, w, h = cv2.boundingRect(approx)
+        print("## %d: area=%g peri=%g %s %s" % (i, area, peri, [x, y], [w, h]))
+        if h < 15:
+            continue
+        # if height is enough #create rectangle for bounding
+        # rect = (x, y, w, h)
+        # rects.append(rect)
+        cIm = cv2.rectangle(imageColor.copy(), (x, y),  (x+w, y+h), color=(255, 0, 0), thickness=20)
+        cIm = cv2.rectangle(cIm, (x, y),  (x+w, y+h), color=(0, 0, 255), thickness=10)
+        cName = outFile2 + ".cnt.%d.png" % i
+        imsave(cName, cIm)
+        print("~~~Saved %s" % cName)
+
+        cImE = cv2.rectangle(edged, (x, y), (x+w, y+h), color=255, thickness=2)
+        # cImE = cv2.rectangle(cImE, (x, y), (x+w, y+h), color=0, thickness=1)
+
+    if cImE is not None:
+        cNameE = outFile2 + ".cnt.edge.png"
+        imsave(cNameE, cImE)
+        print("~#~Saved %s" % cNameE)
+    # assert False
     return True
 
 
 def normalize(a):
-    return a / 10
+    # return np.array(a > 0.95, dtype=a.dtype)
+    # return a / 10
     mn = np.amin(a)
     mx = np.amax(a)
-    print("normalize: min=%g max=%g" % (mn, mx))
-    a = (a - mn) / (mx - mn)
+    print("normalize: %s" % nsdesc(a))
+
+    a = np.array(a > 2.0, dtype=a.dtype)
+    print("        2: %s" % nsdesc(a))
     return a
+    # a = (a - mn) / (mx - mn)
+    a = a  / (mx - mn)
+    print("        2: %s" % nsdesc(a))
+    a = np.array(a > 0.5, dtype=a.dtype)
+    print("        3: %s" % nsdesc(a))
+    return a
+
+
+def nsdesc(a):
+    return "min=%g mean=%4.2f max=%g %s:%s" % (np.amin(a),
+        np.mean(a), np.amax(a), list(a.shape), a.dtype)
 
 main()
