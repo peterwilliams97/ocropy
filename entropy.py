@@ -15,34 +15,25 @@ from skimage.morphology import disk
 from skimage.io import imread, imsave
 from skimage.util import img_as_ubyte
 import cv2
-
 from ocrolib.toplevel import desc
-
 """
-Construct an HTML output file in hOCR format by putting together
-the recognition results for each page in sequence.
-You should usually invoke this program as
-
-    ocropus-hocr 'book/????.bin.png'
-
-For each page like 'book/0001.bin.png', it uses the following files:
-
-    book/0001.bin.png            # page image
-    book/0001.pseg.png           # page segmentation
-    book/0001/010001.txt         # recognizer output for lines
-
-      # perform binarization
-    ./ocropus-nlbin tests/ersch.png -o book
-
-    # perform page layout analysis
-    ./ocropus-gpageseg 'book/????.bin.png'
+    Find high entropy regions in a PDF
 """
 
-maxlines = 300
-noise = 8 # "noise threshold for removing small components from lines
-pad = 3 # padding for extracted line
-expand = 3 # expand mask for grayscale extraction
-gray = False # output grayscale lines as well which are extracted from the grayscale version of the pages
+# All files are saved in outPdfRoot.
+outPdfRoot = "pdf.output"
+
+# Entropy is measured over the entropyKernel.
+entropyKernel = disk(25)
+
+# Entropy threshold. Regions with entropy above (below) this are considered natural (synthetic).
+entropyThreshold = 1.0
+
+# Outline of high-entropy region is morphologically closed with this kernel
+outlineKernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (125, 125))
+
+# We only save high-entropy rectangles at leas this many pixels of larger.
+minArea = 10000
 
 
 def main():
@@ -71,9 +62,6 @@ def main():
         print("Processed %d (%d of %d): %s" % (len(processedFiles), i + 1, len(pdfFiles), inFile))
     print("=" * 80)
     print("Processed %d files %s" % (len(processedFiles), processedFiles))
-
-
-outPdfRoot = "pdf.output"
 
 
 def processPdfFile(pdfFile, start, end, needed, force):
@@ -186,7 +174,7 @@ def processPngFile(outRoot, origFile, fileNum):
     image = img_as_ubyte(image)
     print("  image=%s" % desc(image))
     print("+" * 80)
-    entImage = entropy(image, disk(25))
+    entImage = entropy(image, entropyKernel)
     print("entImage=%s" % desc(entImage))
     entImage = normalize(entImage)
     print("entImage=%s" % desc(entImage))
@@ -199,8 +187,9 @@ def processPngFile(outRoot, origFile, fileNum):
 
     edgeName = outFile2 + ".edges.png"
     edged = cv2.Canny(entImage, 30, 200)
-    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
-    edgedD = cv2.dilate(edged, kernel)
+
+    # edgedD = cv2.dilate(edged, outlineKernel)
+    edgedD = cv2.morphologyEx(edged, cv2.MORPH_CLOSE, outlineKernel)
     imsave(edgeName, edged)
 
     imsave(edgeName, edged)
@@ -208,16 +197,17 @@ def processPngFile(outRoot, origFile, fileNum):
     print("%d contours %s" % (len(contours), type(contours)))
     # print("%d contours %s:%s" % (len(contours), list(contours.shape), contours.dtype))
     contours.sort(key=cv2.contourArea, reverse=True)
-    contours = contours[:5]  # get largest five contour area
+    # contours = contours[:5]  # get largest five contour area
     rects = []
     cImE = None
+    cImEFull = None
     for i, c in enumerate(contours):
         area = cv2.contourArea(c)
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
         x, y, w, h = cv2.boundingRect(approx)
         print("## %d: area=%g peri=%g %s %s" % (i, area, peri, [x, y], [w, h]))
-        if h < 15:
+        if area < minArea:
             continue
         # if height is enough #create rectangle for bounding
         # rect = (x, y, w, h)
@@ -228,6 +218,11 @@ def processPngFile(outRoot, origFile, fileNum):
         imsave(cName, cIm)
         print("~~~Saved %s" % cName)
 
+        if cImEFull is None:
+            cImEFull = imageColor.copy()
+        cImEFull = cv2.rectangle(cImEFull, (x, y), (x+w, y+h), color=(255, 0, 0), thickness=20)
+        cImEFull = cv2.rectangle(cImEFull, (x, y),  (x+w, y+h),color=(0, 0, 255), thickness=10)
+
         cImE = cv2.rectangle(edged, (x, y), (x+w, y+h), color=255, thickness=2)
         # cImE = cv2.rectangle(cImE, (x, y), (x+w, y+h), color=0, thickness=1)
 
@@ -235,6 +230,10 @@ def processPngFile(outRoot, origFile, fileNum):
         cNameE = outFile2 + ".cnt.edge.png"
         imsave(cNameE, cImE)
         print("~#~Saved %s" % cNameE)
+    if cImEFull is not None:
+        cNameEFull = outFile2 + ".cnt.edge.full.png"
+        imsave(cNameEFull, cImEFull)
+        print("~$~Saved %s" % cNameEFull)
     # assert False
     return True
 
@@ -246,19 +245,20 @@ def normalize(a):
     mx = np.amax(a)
     print("normalize: %s" % nsdesc(a))
 
-    a = np.array(a > 2.0, dtype=a.dtype)
+    a = np.array(a > entropyThreshold, dtype=a.dtype)
     print("        2: %s" % nsdesc(a))
     return a
-    # a = (a - mn) / (mx - mn)
-    a = a  / (mx - mn)
-    print("        2: %s" % nsdesc(a))
-    a = np.array(a > 0.5, dtype=a.dtype)
-    print("        3: %s" % nsdesc(a))
-    return a
+    # # a = (a - mn) / (mx - mn)
+    # a = a  / (mx - mn)
+    # print("        2: %s" % nsdesc(a))
+    # a = np.array(a > 0.5, dtype=a.dtype)
+    # print("        3: %s" % nsdesc(a))
+    # return a
 
 
 def nsdesc(a):
     return "min=%g mean=%4.2f max=%g %s:%s" % (np.amin(a),
         np.mean(a), np.amax(a), list(a.shape), a.dtype)
+
 
 main()
