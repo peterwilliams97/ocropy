@@ -71,10 +71,10 @@ def processPdfFile(pdfFile, start, end, needed, force):
     baseName = os.path.basename(pdfFile)
     baseBase, _ = os.path.splitext(baseName)
     outPdfFile = os.path.join(outPdfRoot, baseName)
-    outJsonFile = os.path.join(outPdfRoot, "%s.json" % baseName)
-    with open(outJsonFile, "w") as f:
-        print("outJsonFile=%s" % outJsonFile)
-        print("EMPTY", file=f)
+    outJsonFile = os.path.join(outPdfRoot, "%s.json" % baseBase)
+    # with open(outJsonFile, "w") as f:
+    #     print("outJsonFile=%s" % outJsonFile)
+    #     print("EMPTY", file=f)
     outRoot = os.path.join(outPdfRoot, baseBase)
 
     if not force and os.path.exists(outPdfFile):
@@ -106,7 +106,6 @@ def processPdfFile(pdfFile, start, end, needed, force):
         pageRects[origFile] = rects
         if rects:
             numPages += 1
-            break
     assert numPages > 0
 
     if numPages == 0:

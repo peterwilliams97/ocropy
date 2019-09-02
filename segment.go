@@ -33,6 +33,12 @@ import (
 	"github.com/unidoc/unipdf/v3/creator"
 )
 
+const (
+	fgdIsPng    = false
+	bgdIsPng    = true
+	jpegQuality = 25
+)
+
 const usage = "Make masked image"
 
 func main() {
@@ -121,7 +127,7 @@ func addImageToPage(c *creator.Creator, inPath string, rectList []Rect) error {
 	var fgdPathList []string
 	for i, fgd := range fgdList {
 		fgdPath := makeFgdPath(inPath, i)
-		err = saveImage(fgdPath, fgd, true)
+		err = saveImage(fgdPath, fgd, fgdIsPng)
 		if err != nil {
 			panic(err)
 		}
@@ -129,7 +135,7 @@ func addImageToPage(c *creator.Creator, inPath string, rectList []Rect) error {
 		fgdPathList = append(fgdPathList, fgdPath)
 	}
 
-	err = saveImage(bgdPath, bgd, false)
+	err = saveImage(bgdPath, bgd, bgdIsPng)
 	if err != nil {
 		panic(err)
 	}
@@ -189,21 +195,29 @@ func overlayImages(c *creator.Creator, bgdPath string, rectList []Rect, fgdPathL
 	c.NewPage()
 
 	r := Rect{X0: 0, Y0: 0, X1: w, Y1: h}
-	dctEnc := core.NewDCTEncoder()
-	dctEnc.Width = w
-	dctEnc.Height = h
-	dctEnc.Quality = 50
-	if err := addImage(c, bgdPath, dctEnc, r, scale, xOfs, yOfs, 0); err != nil { // !@#$ DCT
+	enc := makeEncoder(bgdIsPng, w, h)
+	if err := addImage(c, bgdPath, enc, r, scale, xOfs, yOfs, 0); err != nil {
 		return err
 	}
 	for i, fgdPath := range fgdPathList {
 		r := rectList[i]
-		if err := addImage(c, fgdPath, core.NewFlateEncoder(), r, scale, xOfs, yOfs, dilation); err != nil {
+		enc := makeEncoder(fgdIsPng, w, h)
+		if err := addImage(c, fgdPath, enc, r, scale, xOfs, yOfs, dilation); err != nil {
 			return err
 		}
 	}
 	return nil
-	// return c.WriteToFile(outPath)
+}
+
+func makeEncoder(isPng bool, w, h int) core.StreamEncoder {
+	if isPng {
+		return core.NewFlateEncoder()
+	}
+	dctEnc := core.NewDCTEncoder()
+	dctEnc.Width = w
+	dctEnc.Height = h
+	dctEnc.Quality = jpegQuality
+	return dctEnc
 }
 
 // addImage adds image in `imagePath` to `c` with encoding and scale given by `encoder` and `scale`.
@@ -228,7 +242,7 @@ func addImage(c *creator.Creator, imgPath string, encoder core.StreamEncoder,
 }
 
 // makeForeground returns `img` masked to the rectangles in `rectList`.
-func makeForeground(img image.Image, rectList []Rect) image.Image {
+func _makeForeground(img image.Image, rectList []Rect) image.Image {
 	bounds := img.Bounds()
 	w, h := bounds.Max.X, bounds.Max.Y
 	r := fromBounds(bounds)
