@@ -26,66 +26,59 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/unidoc/unipdf/v3/common"
 	"github.com/unidoc/unipdf/v3/core"
 	"github.com/unidoc/unipdf/v3/creator"
 )
 
+func init() {
+	// without this register .. At(), Bounds() functions will
+	// caused memory pointer error!!
+	// image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
+}
+
 const usage = "Make masked image"
 
 func main() {
 	common.SetLogger(common.NewConsoleLogger(common.LogLevelInfo))
+
+	var maskPath, outPath string
+	// flag.StringVar(&inPath, "i", "", "Input image.")
+	flag.StringVar(&maskPath, "m", "", "JSON file containing rectangles of images.")
+	flag.StringVar(&outPath, "o", "", "Output PDF files.")
 	makeUsage(usage)
 	flag.Parse()
-	if len(flag.Args()) == 0 {
+	if len(flag.Args()) == 0 || maskPath == "" || outPath == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 	if _, err := os.Stat(imageDir); os.IsNotExist(err) {
 		os.Mkdir(imageDir, 0777)
 	}
+
+	c := creator.New()
 	for _, inPath := range flag.Args() {
-		err := processDoc(inPath)
+		err := addImageToPage(c, inPath, maskPath)
 		if err != nil {
 			panic(err)
 		}
 	}
+	err := c.WriteToFile(outPath)
+	if err != nil {
+		panic(err)
+	}
 }
 
-func processDoc(inPath string) error {
-	outPath := changeExtOnly(inPath, ".masked.pdf")
-	pageRectList, err := loadPageRectList(inPath)
-	if err != nil {
-		return err
-	}
-	common.Log.Info("processDoc: %d pages\n\t   %q\n\t-> %q", len(pageRectList), inPath, outPath)
-
-	pagePaths := pageKeys(pageRectList)
-
-	c := creator.New()
-	for _, pagePath := range pagePaths {
-		rectList := pageRectList[pagePath]
-		err := addImageToPage(c, pagePath, rectList)
-		if err != nil {
-			return err
-		}
-	}
-	err = c.WriteToFile(outPath)
-	if err != nil {
-		return err
-	}
-	common.Log.Info("processDoc: %d pages\n\t   %q\n\t-> %q", len(pageRectList), inPath, outPath)
-
-	return nil
-}
-
-func addImageToPage(c *creator.Creator, inPath string, rectList []Rect) error {
+func addImageToPage(c *creator.Creator, inPath, maskPath string) error {
 	bgdPath := changeExt(inPath, ".bgd.jpg")
 	origPathPng := changeExt(inPath, ".orig.png")
 	origPathJpg := changeExt(inPath, ".orig.jpg")
 
+	rectList, err := loadRectList(maskPath)
+	if err != nil {
+		panic(err)
+	}
 	fmt.Printf("rectList=%#v\n", rectList)
 
 	imgfile, err := os.Open(inPath)
@@ -345,23 +338,14 @@ func saveRectList(filename string, rectList []Rect) error {
 	return err
 }
 
-func loadPageRectList(filename string) (map[string][]Rect, error) {
+func loadRectList(filename string) ([]Rect, error) {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	var pageRectList map[string][]Rect
-	err = json.Unmarshal(b, &pageRectList)
-	return pageRectList, err
-}
-
-func pageKeys(pageRectList map[string][]Rect) []string {
-	keys := make([]string, 0, len(pageRectList))
-	for page := range pageRectList {
-		keys = append(keys, page)
-	}
-	sort.Strings(keys)
-	return keys
+	var rectList []Rect
+	err = json.Unmarshal(b, &rectList)
+	return rectList, err
 }
 
 func drawPixels(img *image.Alpha, px, py, pw, ph uint, fill bool) {
@@ -397,10 +381,6 @@ func makeFgdPath(outPath string, i int) string {
 func changeExt(filename, newExt string) string {
 	base := filepath.Base(filename)
 	filename = filepath.Join(imageDir, base)
-	return changeExtOnly(filename, newExt)
-}
-
-func changeExtOnly(filename, newExt string) string {
 	ext := filepath.Ext(filename)
 	return filename[:len(filename)-len(ext)] + newExt
 }

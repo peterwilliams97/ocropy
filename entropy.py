@@ -15,6 +15,8 @@ from skimage.morphology import disk
 from skimage.io import imread, imsave
 from skimage.util import img_as_ubyte
 import cv2
+import json
+from pprint import pprint
 from ocrolib.toplevel import desc
 """
     Find high entropy regions in a PDF
@@ -69,6 +71,10 @@ def processPdfFile(pdfFile, start, end, needed, force):
     baseName = os.path.basename(pdfFile)
     baseBase, _ = os.path.splitext(baseName)
     outPdfFile = os.path.join(outPdfRoot, baseName)
+    outJsonFile = os.path.join(outPdfRoot, "%s.json" % baseName)
+    with open(outJsonFile, "w") as f:
+        print("outJsonFile=%s" % outJsonFile)
+        print("EMPTY", file=f)
     outRoot = os.path.join(outPdfRoot, baseBase)
 
     if not force and os.path.exists(outPdfFile):
@@ -83,6 +89,7 @@ def processPdfFile(pdfFile, start, end, needed, force):
 
     print("fileList=%d %s" % (len(fileList), fileList))
     numPages = 0
+    pageRects = {}
     for fileNum, origFile in enumerate(fileList):
         page, ok = pageNum(origFile)
         print("#### page=%s ok=%s" % (page, ok))
@@ -95,9 +102,11 @@ def processPdfFile(pdfFile, start, end, needed, force):
                     print("@2", [start, end], [numPages, needed])
                     continue
         print("@31", start, end)
-        ok = processPngFile(outRoot, origFile, fileNum)
-        if ok:
+        rects = processPngFile(outRoot, origFile, fileNum)
+        pageRects[origFile] = rects
+        if rects:
             numPages += 1
+            break
     assert numPages > 0
 
     if numPages == 0:
@@ -105,55 +114,12 @@ def processPdfFile(pdfFile, start, end, needed, force):
         return False
 
     shutil.copyfile(pdfFile, outPdfFile)
+    print("=" * 80)
+    pprint(pageRects)
+    with open(outJsonFile, "w") as f:
+        print("outJsonFile=%s" % outJsonFile)
+        print(json.dumps(pageRects, indent=4, sort_keys=True), file=f)
     return True
-
-
-gsImageFormat = "doc-%03d.png"
-gsImagePattern = r"^doc\-(\d+).png$"
-gsImageRegex = re.compile(gsImagePattern)
-
-
-def pageNum(pngPath):
-    name = os.path.basename(pngPath)
-    m = gsImageRegex.search(name)
-    print("pageNum:", pngPath,name, m)
-    if m is None:
-        return 0, False
-    return int(m.group(1)), True
-
-
-def runGhostscript(pdf, outputDir):
-    """runGhostscript runs Ghostscript on file `pdf` to create file one png file per page in
-        directory `outputDir`.
-    """
-    print("runGhostscript: pdf=%s outputDir=%s" % (pdf, outputDir))
-    outputPath = os.path.join(outputDir, gsImageFormat)
-    output = "-sOutputFile=%s" % outputPath
-    cmd = ["gs",
-           "-dSAFER",
-           "-dBATCH",
-           "-dNOPAUSE",
-           "-r300",
-           "-sDEVICE=png16m",
-           "-dTextAlphaBits=1",
-           "-dGraphicsAlphaBits=1",
-           output,
-           pdf]
-
-    print("runGhostscript: cmd=%s" % cmd)
-    print("%s" % ' '.join(cmd))
-    os.makedirs(outputDir, exist_ok=True)
-    # p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    p = subprocess.Popen(cmd, shell=False)
-
-    retval = p.wait()
-    print("retval=%d" % retval)
-    print("%s" % ' '.join(cmd))
-    print(" outputDir=%s" % outputDir)
-    print("outputPath=%s" % outputPath)
-    assert os.path.exists(outputDir)
-
-    return retval
 
 
 def processPngFile(outRoot, origFile, fileNum):
@@ -210,8 +176,8 @@ def processPngFile(outRoot, origFile, fileNum):
         if area < minArea:
             continue
         # if height is enough #create rectangle for bounding
-        # rect = (x, y, w, h)
-        # rects.append(rect)
+        rect = {"X0": x, "Y0": y, "X1": x+w, "Y1": y+h}
+        rects.append(rect)
         cIm = cv2.rectangle(imageColor.copy(), (x, y),  (x+w, y+h), color=(255, 0, 0), thickness=20)
         cIm = cv2.rectangle(cIm, (x, y),  (x+w, y+h), color=(0, 0, 255), thickness=10)
         cName = outFile2 + ".cnt.%d.png" % i
@@ -235,7 +201,7 @@ def processPngFile(outRoot, origFile, fileNum):
         imsave(cNameEFull, cImEFull)
         print("~$~Saved %s" % cNameEFull)
     # assert False
-    return True
+    return rects
 
 
 def normalize(a):
@@ -259,6 +225,54 @@ def normalize(a):
 def nsdesc(a):
     return "min=%g mean=%4.2f max=%g %s:%s" % (np.amin(a),
         np.mean(a), np.amax(a), list(a.shape), a.dtype)
+
+
+gsImageFormat = "doc-%03d.png"
+gsImagePattern = r"^doc\-(\d+).png$"
+gsImageRegex = re.compile(gsImagePattern)
+
+
+def pageNum(pngPath):
+    name = os.path.basename(pngPath)
+    m = gsImageRegex.search(name)
+    print("pageNum:", pngPath, name, m)
+    if m is None:
+        return 0, False
+    return int(m.group(1)), True
+
+
+def runGhostscript(pdf, outputDir):
+    """runGhostscript runs Ghostscript on file `pdf` to create file one png file per page in
+        directory `outputDir`.
+    """
+    print("runGhostscript: pdf=%s outputDir=%s" % (pdf, outputDir))
+    outputPath = os.path.join(outputDir, gsImageFormat)
+    output = "-sOutputFile=%s" % outputPath
+    cmd = ["gs",
+           "-dSAFER",
+           "-dBATCH",
+           "-dNOPAUSE",
+           "-r300",
+           "-sDEVICE=png16m",
+           "-dTextAlphaBits=1",
+           "-dGraphicsAlphaBits=1",
+           output,
+           pdf]
+
+    print("runGhostscript: cmd=%s" % cmd)
+    print("%s" % ' '.join(cmd))
+    os.makedirs(outputDir, exist_ok=True)
+    # p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen(cmd, shell=False)
+
+    retval = p.wait()
+    print("retval=%d" % retval)
+    print("%s" % ' '.join(cmd))
+    print(" outputDir=%s" % outputDir)
+    print("outputPath=%s" % outputPath)
+    assert os.path.exists(outputDir)
+
+    return retval
 
 
 main()
