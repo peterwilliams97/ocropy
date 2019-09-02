@@ -53,15 +53,29 @@ func main() {
 		os.Mkdir(imageDir, 0777)
 	}
 	for _, inPath := range flag.Args() {
-		err := processDoc(inPath)
+		err := processDoc(inPath, true, false)
+		if err != nil {
+			panic(err)
+		}
+		err = processDoc(inPath, true, true)
+		if err != nil {
+			panic(err)
+		}
+		err = processDoc(inPath, false, false)
 		if err != nil {
 			panic(err)
 		}
 	}
 }
 
-func processDoc(inPath string) error {
-	outPath := changeExtOnly(inPath, ".masked.pdf")
+func processDoc(inPath string, simple, isPng bool) error {
+	var outPath string
+	if simple {
+		names := map[bool]string{false: "jpg", true: "png"}
+		outPath = changeExtOnly(inPath, fmt.Sprintf(".unmasked.%s.pdf", names[isPng]))
+	} else {
+		outPath = changeExtOnly(inPath, ".masked.pdf")
+	}
 	pageRectList, err := loadPageRectList(inPath)
 	if err != nil {
 		return err
@@ -73,7 +87,7 @@ func processDoc(inPath string) error {
 	c := creator.New()
 	for _, pagePath := range pagePaths {
 		rectList := pageRectList[pagePath]
-		err := addImageToPage(c, pagePath, rectList)
+		err := addImageToPage(c, pagePath, rectList, simple, isPng)
 		if err != nil {
 			return err
 		}
@@ -87,7 +101,7 @@ func processDoc(inPath string) error {
 	return nil
 }
 
-func addImageToPage(c *creator.Creator, inPath string, rectList []Rect) error {
+func addImageToPage(c *creator.Creator, inPath string, rectList []Rect, simple, isPng bool) error {
 	bgdPath := changeExt(inPath, ".bgd.jpg")
 	origPathPng := changeExt(inPath, ".orig.png")
 	origPathJpg := changeExt(inPath, ".orig.jpg")
@@ -107,6 +121,10 @@ func addImageToPage(c *creator.Creator, inPath string, rectList []Rect) error {
 	}
 	bounds := img.Bounds()
 	w, h := bounds.Max.X, bounds.Max.Y
+
+	if simple {
+		return placeImageOnPage(c, inPath, w, h, isPng)
+	}
 
 	dilation := 2
 	fgdList := makeForegroundList(img, rectList)
@@ -141,7 +159,7 @@ func addImageToPage(c *creator.Creator, inPath string, rectList []Rect) error {
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
 
-	err = overlayImages(c, bgdPath, rectList, fgdPathList, w, h, dilation)
+	err = overlayImagesOnPage(c, bgdPath, rectList, fgdPathList, w, h, dilation)
 	if err != nil {
 		panic(err)
 	}
@@ -185,10 +203,10 @@ func computeScale(width, height, w, h float64) (scale, xOfs, yOfs float64) {
 // overlay image in `fgdPath` over image in `bgdPath` (currently assumed to be have the same
 // dimensions `w` x `h`) and write the resulting single page `width` x `height` PDF to `outPath`.
 // is the width of the image in PDF document dimensions (height/width ratio is maintained).
-func overlayImages(c *creator.Creator, bgdPath string, rectList []Rect, fgdPathList []string,
+func overlayImagesOnPage(c *creator.Creator, bgdPath string, rectList []Rect, fgdPathList []string,
 	w, h, dilation int) error {
 	scale, xOfs, yOfs := computeScale(width, height, float64(w), float64(h))
-	common.Log.Info("overlayImages: scale=%.3f width=%.1f height=%.1f w=%d h=%d",
+	common.Log.Info("overlayImagesOnPage: scale=%.3f width=%.1f height=%.1f w=%d h=%d",
 		scale, width, height, w, h)
 	common.Log.Info("               scale * w x h = %.1f x%.1f", scale*float64(w), scale*float64(h))
 	// c := creator.New()
@@ -205,6 +223,21 @@ func overlayImages(c *creator.Creator, bgdPath string, rectList []Rect, fgdPathL
 		if err := addImage(c, fgdPath, enc, r, scale, xOfs, yOfs, dilation); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func placeImageOnPage(c *creator.Creator, bgdPath string, w, h int, isPng bool) error {
+	scale, xOfs, yOfs := computeScale(width, height, float64(w), float64(h))
+	common.Log.Info("placeImageOnPage: scale=%.3f width=%.1f height=%.1f w=%d h=%d",
+		scale, width, height, w, h)
+	common.Log.Info("               scale * w x h = %.1f x%.1f", scale*float64(w), scale*float64(h))
+	c.NewPage()
+
+	r := Rect{X0: 0, Y0: 0, X1: w, Y1: h}
+	enc := makeEncoder(isPng, w, h)
+	if err := addImage(c, bgdPath, enc, r, scale, xOfs, yOfs, 0); err != nil {
+		return err
 	}
 	return nil
 }

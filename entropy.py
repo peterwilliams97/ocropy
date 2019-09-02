@@ -81,9 +81,9 @@ def processPdfFile(pdfFile, start, end, needed, force):
         print("%s exists. skipping" % outPdfFile)
         return False
 
-    # os.makedirs(outRoot, exist_ok=True)
-    # retval = runGhostscript(pdfFile, outRoot)
-    # assert retval == 0
+    os.makedirs(outRoot, exist_ok=True)
+    retval = runGhostscript(pdfFile, outRoot)
+    assert retval == 0
     fileList = glob(os.path.join(outRoot, "doc-*.png"))
     fileList.sort()
 
@@ -106,7 +106,7 @@ def processPdfFile(pdfFile, start, end, needed, force):
         pageRects[origFile] = rects
         if rects:
             numPages += 1
-    assert numPages > 0
+    assert numPages > 0, pageRects
 
     if numPages == 0:
         print("~~ No pages processed")
