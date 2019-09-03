@@ -54,16 +54,26 @@ def main():
     args = parser.parse_args()
     os.makedirs(outPdfRoot, exist_ok=True)
     pdfFiles = args.files
-    pdfFiles.sort(key=lambda k: (os.path.getsize(k), k))
+    pdfFiles = [fn for fn in pdfFiles if not derived(fn)]
+    pdfFiles.sort(key=lambda fn: (os.path.getsize(fn), fn))
+    for i, fn in enumerate(pdfFiles):
+        print("%3d: %4.2f MB %s" % (i, os.path.getsize(fn)/1e6, fn))
+    # assert False
     processedFiles = []
     for i, inFile in enumerate(pdfFiles):
-        print("-" * 80)
+        print("*" * 80)
+        print("** %3d: %s" % (i, inFile))
         if not processPdfFile(inFile, args.start, args.end, args.needed, args.force):
             continue
         processedFiles.append(inFile)
         print("Processed %d (%d of %d): %s" % (len(processedFiles), i + 1, len(pdfFiles), inFile))
     print("=" * 80)
     print("Processed %d files %s" % (len(processedFiles), processedFiles))
+
+
+def derived(filename):
+    name = os.path.basename(filename)
+    return name.count(".") > 1
 
 
 def processPdfFile(pdfFile, start, end, needed, force):
@@ -77,7 +87,7 @@ def processPdfFile(pdfFile, start, end, needed, force):
     #     print("EMPTY", file=f)
     outRoot = os.path.join(outPdfRoot, baseBase)
 
-    if not force and os.path.exists(outPdfFile):
+    if not force and os.path.exists(outJsonFile):
         print("%s exists. skipping" % outPdfFile)
         return False
 
@@ -85,7 +95,6 @@ def processPdfFile(pdfFile, start, end, needed, force):
     retval = runGhostscript(pdfFile, outRoot)
     assert retval == 0
     fileList = glob(os.path.join(outRoot, "doc-*.png"))
-    fileList.sort()
 
     print("fileList=%d %s" % (len(fileList), fileList))
     numPages = 0
@@ -104,20 +113,21 @@ def processPdfFile(pdfFile, start, end, needed, force):
         print("@31", start, end)
         rects = processPngFile(outRoot, origFile, fileNum)
         pageRects[origFile] = rects
-        if rects:
-            numPages += 1
-    assert numPages > 0, pageRects
-
-    if numPages == 0:
-        print("~~ No pages processed")
-        return False
+        # if rects:
+        numPages += 1
+    # assert numPages > 0, pageRects
 
     shutil.copyfile(pdfFile, outPdfFile)
     print("=" * 80)
     pprint(pageRects)
+    print("outJsonFile=%s" % outJsonFile)
     with open(outJsonFile, "w") as f:
-        print("outJsonFile=%s" % outJsonFile)
         print(json.dumps(pageRects, indent=4, sort_keys=True), file=f)
+
+    if numPages == 0:
+        print("~~ No pages processed")
+        return False
+    runSegment(outJsonFile)
     return True
 
 
@@ -129,6 +139,7 @@ def processPngFile(outRoot, origFile, fileNum):
 
     outRoot2, outDir2 = os.path.split(outRoot)
     outFile2 = os.path.join(outRoot2, "%s.entropy" % outDir2, baseName)
+    outFile2Gray = os.path.join(outRoot2, "%s.entropy" % outDir2, "%s.levels.png" % baseBase)
     print("outFile2=%s" % outFile2)
     # assert False
 
@@ -139,15 +150,16 @@ def processPngFile(outRoot, origFile, fileNum):
     image = img_as_ubyte(image)
     print("  image=%s" % desc(image))
     print("+" * 80)
-    entImage = entropy(image, entropyKernel)
-    print("entImage=%s" % desc(entImage))
-    entImage = normalize(entImage)
+    entImageGray = entropy(image, entropyKernel)
+    print("entImageGray=%s" % desc(entImageGray))
+    entImage = normalize(entImageGray)
     print("entImage=%s" % desc(entImage))
     entImage = img_as_ubyte(entImage)
     print("entImage=%s" % desc(entImage))
 
     outDir2 = os.path.dirname(outFile2)
     os.makedirs(outDir2, exist_ok=True)
+    imsave(outFile2Gray, entImageGray / 10.0)  # !@#$
     imsave(outFile2, entImage)
 
     edgeName = outFile2 + ".edges.png"
@@ -176,6 +188,7 @@ def processPngFile(outRoot, origFile, fileNum):
             continue
         # if height is enough #create rectangle for bounding
         rect = {"X0": x, "Y0": y, "X1": x+w, "Y1": y+h}
+
         rects.append(rect)
         cIm = cv2.rectangle(imageColor.copy(), (x, y),  (x+w, y+h), color=(255, 0, 0), thickness=20)
         cIm = cv2.rectangle(cIm, (x, y),  (x+w, y+h), color=(0, 0, 255), thickness=10)
@@ -183,13 +196,19 @@ def processPngFile(outRoot, origFile, fileNum):
         imsave(cName, cIm)
         print("~~~Saved %s" % cName)
 
+        for r in rects[:-1]:
+            if overlaps:
+                print("@@@@ \n%s overlaps\n%s\n%s" % (rect, r, rects[:-1]))
+                # return []
+            # assert not overlaps(rect, r), "\n%s overlaps\n%s\n%s" % (rect, r, rects[:-1])
+
         if cImEFull is None:
             cImEFull = imageColor.copy()
         cImEFull = cv2.rectangle(cImEFull, (x, y), (x+w, y+h), color=(255, 0, 0), thickness=20)
         cImEFull = cv2.rectangle(cImEFull, (x, y),  (x+w, y+h),color=(0, 0, 255), thickness=10)
 
-        cImE = cv2.rectangle(edged, (x, y), (x+w, y+h), color=255, thickness=2)
-        # cImE = cv2.rectangle(cImE, (x, y), (x+w, y+h), color=0, thickness=1)
+        cImE = cv2.rectangle(edged, (x, y), (x+w, y+h), color=255, thickness=32)
+        cImE = cv2.rectangle(cImE, (x, y), (x+w, y+h), color=0, thickness=1)
 
     if cImE is not None:
         cNameE = outFile2 + ".cnt.edge.png"
@@ -201,6 +220,41 @@ def processPngFile(outRoot, origFile, fileNum):
         print("~$~Saved %s" % cNameEFull)
     # assert False
     return rects
+
+
+verbose = False
+
+
+def overlaps(rect1Dict, rect2Dict):
+    rect1 = expandRect(rect1Dict)
+    rect2 = expandRect(rect2Dict)
+    bad = containsRect(rect1, rect2) or containsRect(rect1, rect2)
+    if bad:
+        print("    overlaps: bad=%s rect1=%s rect2=%s" % (bad, rect1, rect2))
+    return bad
+
+
+def containsRect(rect, rectIn):
+    x0, y0, x1, y1 = rectIn
+    corners = [(x0, y0), (x0, y1), (x1, y0), (x1, y1)]
+    bad = any(containsPt(rect, pt) for pt in corners)
+    if bad:
+        print("containsRect: bad=%s rect=%s rectIn=%s" % (bad, rect, rectIn))
+    return bad
+
+
+def containsPt(rect, pt):
+    x0, y0, x1, y1 = rect
+    x, y = pt
+    bad = x0 <= x <= x1 and y0 <= y <= y1
+    if bad:
+        print("  containsPt: bad=%s rect=%s pt=%s" % (bad, rect, pt))
+    return bad
+
+
+def expandRect(rect):
+    x0, y0, x1, y1 = (rect[k] for k in ("X0", "Y0", "X1", "Y1"))
+    return x0, y0, x1, y1
 
 
 def normalize(a):
@@ -270,6 +324,23 @@ def runGhostscript(pdf, outputDir):
     print(" outputDir=%s" % outputDir)
     print("outputPath=%s" % outputPath)
     assert os.path.exists(outputDir)
+
+    return retval
+
+
+def runSegment(outJsonFile):
+    """runSegment runs segment on file `outJsonFile` to create `outSegmentFle`.
+    """
+    name, _ = os.path.splitext(outJsonFile)
+    outSegmentFile = "%s.masked.pdf" % name
+
+    cmd = ["./segment", outJsonFile]
+    print("runSegment: cmd=%s -> %s" % (cmd, outSegmentFile))
+    p = subprocess.Popen(cmd, shell=False)
+    retval = p.wait()
+    print("retval=%d" % retval)
+    print("runSegment: cmd=%s -> %s" % (cmd, outSegmentFile))
+    assert os.path.exists(outSegmentFile)
 
     return retval
 

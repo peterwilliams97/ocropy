@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"image" // for color.Alpha{a}
+	"image/color"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
@@ -53,26 +54,32 @@ func main() {
 		os.Mkdir(imageDir, 0777)
 	}
 	for _, inPath := range flag.Args() {
-		err := processDoc(inPath, true, false)
+		err := processDoc(inPath, false, true, true)
 		if err != nil {
 			panic(err)
 		}
-		err = processDoc(inPath, true, true)
+		err = processDoc(inPath, true, false, false)
 		if err != nil {
 			panic(err)
 		}
-		err = processDoc(inPath, false, false)
+		err = processDoc(inPath, true, false, true)
+		if err != nil {
+			panic(err)
+		}
+		err = processDoc(inPath, false, false, false)
 		if err != nil {
 			panic(err)
 		}
 	}
 }
 
-func processDoc(inPath string, simple, isPng bool) error {
+func processDoc(inPath string, simple, bgdOnly, isPng bool) error {
 	var outPath string
 	if simple {
 		names := map[bool]string{false: "jpg", true: "png"}
 		outPath = changeExtOnly(inPath, fmt.Sprintf(".unmasked.%s.pdf", names[isPng]))
+	} else if bgdOnly {
+		outPath = changeExtOnly(inPath, ".bgd.pdf")
 	} else {
 		outPath = changeExtOnly(inPath, ".masked.pdf")
 	}
@@ -87,7 +94,7 @@ func processDoc(inPath string, simple, isPng bool) error {
 	c := creator.New()
 	for _, pagePath := range pagePaths {
 		rectList := pageRectList[pagePath]
-		err := addImageToPage(c, pagePath, rectList, simple, isPng)
+		err := addImageToPage(c, pagePath, rectList, simple, bgdOnly, isPng)
 		if err != nil {
 			return err
 		}
@@ -101,8 +108,9 @@ func processDoc(inPath string, simple, isPng bool) error {
 	return nil
 }
 
-func addImageToPage(c *creator.Creator, inPath string, rectList []Rect, simple, isPng bool) error {
-	bgdPath := changeExt(inPath, ".bgd.jpg")
+func addImageToPage(c *creator.Creator, inPath string, rectList []Rect,
+	simple, bgdOnly, isPng bool) error {
+	bgdPath := changeExt(inPath, ".bgd.png")
 	origPathPng := changeExt(inPath, ".orig.png")
 	origPathJpg := changeExt(inPath, ".orig.jpg")
 
@@ -128,7 +136,7 @@ func addImageToPage(c *creator.Creator, inPath string, rectList []Rect, simple, 
 
 	dilation := 2
 	fgdList := makeForegroundList(img, rectList)
-	bgd := makeBackground(img, dilate(rectList, -dilation))
+	bgd := makeBackground(img, dilate(rectList, -dilation), bgdOnly)
 
 	err = saveImage(origPathPng, img, true)
 	if err != nil {
@@ -158,6 +166,10 @@ func addImageToPage(c *creator.Creator, inPath string, rectList []Rect, simple, 
 		panic(err)
 	}
 	fmt.Printf("saved background to %q\n", bgdPath)
+
+	if bgdOnly {
+		return placeImageOnPage(c, bgdPath, w, h, isPng)
+	}
 
 	err = overlayImagesOnPage(c, bgdPath, rectList, fgdPathList, w, h, dilation)
 	if err != nil {
@@ -315,7 +327,7 @@ func makeForegroundList(img image.Image, rectList []Rect) []image.Image {
 }
 
 // makeForeground returns `img` not masked to the rectangles in `rectList`.
-func makeBackground(img image.Image, rectList []Rect) image.Image {
+func makeBackground(img image.Image, rectList []Rect, blackBgd bool) image.Image {
 	bounds := img.Bounds()
 	w, h := bounds.Max.X, bounds.Max.Y
 	r := fromBounds(bounds)
@@ -324,10 +336,16 @@ func makeBackground(img image.Image, rectList []Rect) image.Image {
 	fmt.Printf("r=%#v\n", r)
 	fmt.Printf("w=%d h=%d\n", w, h)
 
+	bgdColor := image.White
+	if blackBgd {
+		bgdColor = image.NewUniform(color.RGBA{B: 0xFF, A: 0xFF})
+		fmt.Printf("@@ bgdColor=%#v\n", bgdColor)
+	}
+
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, r.bounds(), img, r.position(), draw.Src)
 	for _, r := range rectList {
-		fillRect(rgba, r, image.Black)
+		fillRect(rgba, r, bgdColor)
 	}
 	return rgba
 }
